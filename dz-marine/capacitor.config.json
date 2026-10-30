@@ -1,0 +1,15 @@
+{
+  "appId": "dz.marine.app",
+  "appName": "DZ Marine",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "android": {
+    "allowMixedContent": true,
+    "useLegacyBridge": false
+  },
+  "plugins": {
+    "Geolocation": {
+      "permissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"]
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "name": "dz-marine",
+  "version": "1.0.0",
+  "description": "DZ Marine - Algerian Coastal GPS & Marine Charting App",
+  "main": "src/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/geolocation": "^6.0.0",
+    "leaflet": "^1.9.4",
+    "lucide": "^0.263.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.4",
+    "vite": "^5.3.1"
+  }
+}
