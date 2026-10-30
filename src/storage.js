@@ -40,6 +40,46 @@ function getDB() {
   return db
 }
 
+// Initial sample spots for Algerian Coast
+const DEFAULT_DZ_SPOTS = [
+  {
+    name: 'Tombant Tipaza - Chenoua',
+    latitude: 36.618,
+    longitude: 2.415,
+    depth_meters: 42,
+    activity_type: 'boat',
+    category: 'fishing',
+    color: '#0ea5e9',
+    visibility_meters: 18,
+    seabed_type: 'rock',
+    notes: 'Tombant rocheux poissonneux, mérous et dentis le matin.'
+  },
+  {
+    name: "Banc d'Alger - Baie",
+    latitude: 36.785,
+    longitude: 3.120,
+    depth_meters: 55,
+    activity_type: 'boat',
+    category: 'fishing',
+    color: '#3b82f6',
+    visibility_meters: 14,
+    seabed_type: 'rock',
+    notes: 'Zone riche en pagres et dorades.'
+  },
+  {
+    name: 'Mouillage Calme - Tamentfoust',
+    latitude: 36.805,
+    longitude: 3.235,
+    depth_meters: 10,
+    activity_type: 'boat',
+    category: 'anchor',
+    color: '#8b5cf6',
+    visibility_meters: 15,
+    seabed_type: 'sand',
+    notes: 'Abri naturel contre le vent d’ouest.'
+  }
+]
+
 // --- Spots ---
 export async function saveSpot(spot) {
   return new Promise((resolve, reject) => {
@@ -51,11 +91,11 @@ export async function saveSpot(spot) {
       name: spot.name || 'Spot',
       latitude: spot.latitude,
       longitude: spot.longitude,
-      depth_meters: spot.depth_meters || null,
+      depth_meters: spot.depth_meters !== undefined ? spot.depth_meters : null,
       activity_type: spot.activity_type || 'boat',
       category: spot.category || 'fishing',
-      color: spot.color || '#FF3B30',
-      visibility_meters: spot.visibility_meters || null,
+      color: spot.color || '#0ea5e9',
+      visibility_meters: spot.visibility_meters !== undefined ? spot.visibility_meters : null,
       seabed_type: spot.seabed_type || null,
       notes: spot.notes || '',
       created_at: spot.created_at || now,
@@ -72,7 +112,22 @@ export async function getAllSpots() {
     const tx = getDB().transaction('spots', 'readonly')
     const store = tx.objectStore('spots')
     const req = store.getAll()
-    req.onsuccess = () => resolve(req.result || [])
+    req.onsuccess = async () => {
+      let results = req.result || []
+      // If first run, seed default spots
+      if (results.length === 0) {
+        for (const s of DEFAULT_DZ_SPOTS) {
+          await saveSpot(s)
+        }
+        // re-fetch
+        const reTx = getDB().transaction('spots', 'readonly')
+        const reReq = reTx.objectStore('spots').getAll()
+        reReq.onsuccess = () => resolve(reReq.result || [])
+        reReq.onerror = () => resolve([])
+      } else {
+        resolve(results)
+      }
+    }
     req.onerror = () => reject(req.error)
   })
 }
@@ -123,12 +178,17 @@ export async function getWeatherCache(regionId) {
       // Cache valid for 72h
       const age = Date.now() - result.timestamp
       if (age > 72 * 60 * 60 * 1000) return resolve(null)
-      resolve({
-        ...result,
-        forecast_json: JSON.parse(result.forecast_json),
-        isCache: true,
-        cacheAge: Math.round(age / 60000) // minutes
-      })
+      try {
+        resolve({
+          ...result,
+          current: JSON.parse(result.forecast_json).current,
+          forecast: JSON.parse(result.forecast_json).forecast,
+          isCache: true,
+          cacheAge: Math.round(age / 60000)
+        })
+      } catch {
+        resolve(null)
+      }
     }
     req.onerror = () => reject(req.error)
   })

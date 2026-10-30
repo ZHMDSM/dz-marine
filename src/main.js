@@ -1,69 +1,113 @@
 // DZ Marine - Main Application Entry Point
 import './style.css'
-import { initMap, updatePosition, panToPosition, toggleLayer, isLayerActive,
-  addSpotMarker, removeSpotMarker, clearAllSpotMarkers,
-  showAnchorZone, hideAnchorZone, startRuler, clearRuler, setNightMode } from './map.js'
-import { initDB, saveSpot, getAllSpots, deleteSpot, exportGPX, importGPX,
-  saveSetting, getSetting, loadAllSettings } from './storage.js'
-import { fetchMarineWeather, beaufortScale, degreesToCompass,
-  waveConditionLabel, formatWeatherTime } from './weather.js'
-import { setAnchor, clearAnchor, checkAnchorDrift, setAnchorCallbacks,
-  formatCoordDD, formatCoordDMS, msToKnots, msToKmh } from './anchor.js'
+import {
+  initMap, updatePosition, panToPosition, toggleLayer, isLayerActive,
+  addSpotMarker, removeSpotMarker, clearAllSpotMarkers, setTapMarker, clearTapMarker,
+  showAnchorZone, hideAnchorZone, startRuler, clearRuler, isRulerActive, setNightMode
+} from './map.js'
+import {
+  initDB, saveSpot, getAllSpots, deleteSpot, exportGPX, importGPX,
+  saveSetting, loadAllSettings
+} from './storage.js'
+import {
+  fetchMarineWeather, beaufortScale, degreesToCompass,
+  waveConditionLabel, formatWeatherTime
+} from './weather.js'
+import {
+  setAnchor, clearAnchor, checkAnchorDrift, setAnchorCallbacks,
+  formatCoordDD, formatCoordDMS, msToKnots, msToKmh, haversineDistance, bearingTo
+} from './anchor.js'
 import { translations, setLanguage, t, getCurrentLang } from './i18n.js'
+import { getWaterDepth, formatDepth } from './depth.js'
 
-// App state
+// Application Global State
 let appState = {
   lang: 'fr',
-  units: 'knots',
-  coordFormat: 'DD',
+  units: 'knots', // 'knots' | 'kmh'
+  coordFormat: 'DD', // 'DD' | 'DMS'
   nightMode: false,
   appMode: 'boat', // 'boat' | 'shore'
-  gps: { lat: null, lon: null, speed: null, heading: null, accuracy: null },
+  gps: { lat: 36.7525, lon: 3.0588, speed: 0, heading: 0, accuracy: 10, isLive: false },
   watchId: null,
   spots: [],
-  anchor: { active: false, lat: null, lon: null, radius: 50 },
+  anchor: { active: false, lat: null, lon: null, radius: 45 },
   weather: null,
   activePanel: null,
   editingSpot: null,
-  rulerActive: false,
+  tappedPoint: null,
+  currentDepth: null
 }
 
-// ---- Bootstrap ----
+// ---- Bootstrap Application ----
 async function init() {
-  await initDB()
-  const settings = await loadAllSettings()
-  appState = { ...appState, ...settings }
-  setLanguage(appState.lang)
-  applyTheme()
+  try {
+    await initDB()
+    const settings = await loadAllSettings()
+    appState = { ...appState, ...settings }
+    
+    // Apply language & theme
+    setLanguage(appState.lang)
+    applyTheme()
+    
+    // Init Leaflet Map with map-click callback
+    initMap('map', onMapClick)
+    
+    // Load local spots
+    await loadSpots()
+    
+    // Render localized UI
+    applyLanguage(appState.lang)
+    
+    // Start GPS hardware listener
+    startGPS()
+    
+    // Wire all event listeners
+    setupEventListeners()
+    
+    // Preload weather for central Algerian waters
+    loadWeather()
 
-  initMap('map')
-  await loadSpots()
-  renderUI()
-  startGPS()
-  setupEventListeners()
+    // Estimate initial depth
+    updateLiveDepth(appState.gps.lat, appState.gps.lon)
+    
+  } catch (err) {
+    console.error('Initialization error:', err)
+  }
 }
 
-// ---- GPS ----
+// ---- GPS Hardware Listener ----
 function startGPS() {
   if (!navigator.geolocation) {
     setHUDStatus('gpsError')
     return
   }
   setHUDStatus('gpsWaiting')
+  
   appState.watchId = navigator.geolocation.watchPosition(
     onGPSUpdate,
     onGPSError,
-    { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
+    { enableHighAccuracy: true, maximumAge: 2000, timeout: 12000 }
   )
 }
 
 function onGPSUpdate(pos) {
   const { latitude: lat, longitude: lon, speed, heading, accuracy } = pos.coords
-  appState.gps = { lat, lon, speed, heading, accuracy }
+  appState.gps = {
+    lat, lon,
+    speed: speed !== null ? speed : 0,
+    heading: heading !== null ? heading : 0,
+    accuracy: accuracy || 5,
+    isLive: true
+  }
+  
   updatePosition(lat, lon, heading || 0, accuracy)
   updateHUD()
+  setHUDStatus('gpsActive')
+  
+  // Update real-time water depth estimate
+  updateLiveDepth(lat, lon)
 
-  // Anchor check
+  // Anchor drift check
   if (appState.anchor.active) {
     const result = checkAnchorDrift(lat, lon)
     updateAnchorStatus(result)
@@ -71,31 +115,46 @@ function onGPSUpdate(pos) {
 }
 
 function onGPSError(err) {
-  console.warn('GPS error:', err.message)
-  setHUDStatus('gpsError')
+  console.warn('GPS signal pending or restricted:', err.message)
+  setHUDStatus(appState.gps.isLive ? 'gpsActive' : 'gpsWaiting')
+  updateHUD()
 }
 
-// ---- HUD ----
+async function updateLiveDepth(lat, lon) {
+  try {
+    const res = await getWaterDepth(lat, lon)
+    appState.currentDepth = res.depth
+    const depthEl = document.getElementById('hud-depth')
+    if (depthEl) {
+      depthEl.textContent = formatDepth(res.depth)
+    }
+  } catch (e) {
+    // silent
+  }
+}
+
+// ---- HUD Updates ----
 function updateHUD() {
   const { lat, lon, speed, heading } = appState.gps
-  if (lat === null) return
-
+  
   // Speed
-  let speedStr = '—'
+  let speedStr = '0.0 kts'
   if (speed !== null && speed !== undefined) {
     speedStr = appState.units === 'knots' ? `${msToKnots(speed)} kts` : `${msToKmh(speed)} km/h`
   }
-
+  
   // Coordinates
   const coordStr = appState.coordFormat === 'DMS'
     ? formatCoordDMS(lat, lon)
     : formatCoordDD(lat, lon)
 
-  document.getElementById('hud-speed').textContent = speedStr
-  document.getElementById('hud-heading').textContent = heading !== null ? `${Math.round(heading || 0)}°` : '—'
-  document.getElementById('hud-coords').textContent = coordStr
-  document.getElementById('hud-gps-dot').className = 'gps-dot active'
-  document.getElementById('hud-gps-label').textContent = t('gpsActive')
+  const speedEl = document.getElementById('hud-speed')
+  const headingEl = document.getElementById('hud-heading')
+  const coordsEl = document.getElementById('hud-coords')
+  
+  if (speedEl) speedEl.textContent = speedStr
+  if (headingEl) headingEl.textContent = `${Math.round(heading || 0)}°`
+  if (coordsEl) coordsEl.textContent = coordStr
 }
 
 function setHUDStatus(status) {
@@ -106,11 +165,59 @@ function setHUDStatus(status) {
   label.textContent = t(status)
 }
 
-// ---- Spots ----
+// ---- Map Tap / Inspection Handler ----
+async function onMapClick(latlng) {
+  // If a bottom panel is open, close it on map tap
+  if (appState.activePanel) {
+    closeAllPanels()
+    return
+  }
+
+  const lat = latlng.lat
+  const lon = latlng.lng
+  appState.tappedPoint = { lat, lon }
+  
+  // Place visual tap marker
+  setTapMarker(lat, lon)
+
+  // Calculate distance & bearing from boat
+  const distM = haversineDistance(appState.gps.lat, appState.gps.lon, lat, lon)
+  const distNM = (distM / 1852).toFixed(2)
+  const bearing = bearingTo(appState.gps.lat, appState.gps.lon, lat, lon)
+  
+  // Query depth at tapped coordinate
+  const depthRes = await getWaterDepth(lat, lon)
+  const depthStr = depthRes.depth !== null ? formatDepth(depthRes.depth) : '—'
+  appState.tappedPoint.depth = depthRes.depth
+
+  // Update Inspector UI
+  const inspEl = document.getElementById('map-inspector')
+  const coordsEl = document.getElementById('insp-coords')
+  const depthEl = document.getElementById('insp-depth')
+  const distEl = document.getElementById('insp-dist')
+  const bearingEl = document.getElementById('insp-bearing')
+
+  if (coordsEl) coordsEl.textContent = formatCoordDD(lat, lon)
+  if (depthEl) depthEl.textContent = depthStr
+  if (distEl) distEl.textContent = `${distNM} NM (${Math.round(distM)}m)`
+  if (bearingEl) bearingEl.textContent = `${bearing}°`
+  
+  if (inspEl) inspEl.classList.remove('hidden')
+}
+
+function closeInspector() {
+  const inspEl = document.getElementById('map-inspector')
+  if (inspEl) inspEl.classList.add('hidden')
+  clearTapMarker()
+  appState.tappedPoint = null
+}
+
+// ---- Spots Management ----
 async function loadSpots() {
   appState.spots = await getAllSpots()
   clearAllSpotMarkers()
   appState.spots.forEach(spot => addSpotMarker(spot, onSpotTap))
+  renderSpotsPanel()
 }
 
 function onSpotTap(spot) {
@@ -118,134 +225,195 @@ function onSpotTap(spot) {
 }
 
 async function quickSaveSpot() {
-  const { lat, lon } = appState.gps
-  if (!lat) { showToast('❌ ' + t('gpsWaiting')); return }
-  const spot = await saveSpot({
-    name: `Spot ${new Date().toLocaleTimeString()}`,
-    latitude: lat, longitude: lon,
+  const lat = appState.tappedPoint?.lat || appState.gps.lat
+  const lon = appState.tappedPoint?.lon || appState.gps.lon
+  const depth = appState.tappedPoint?.depth || appState.currentDepth || null
+
+  const now = new Date()
+  const defaultName = `Spot ${now.getHours()}h${String(now.getMinutes()).padStart(2, '0')}`
+
+  const newSpot = await saveSpot({
+    name: defaultName,
+    latitude: lat,
+    longitude: lon,
+    depth_meters: depth,
     activity_type: appState.appMode,
-    category: 'fishing'
+    category: appState.appMode === 'shore' ? 'fishing' : 'fishing',
+    color: '#0ea5e9'
   })
-  appState.spots.push(spot)
-  addSpotMarker(spot, onSpotTap)
-  showToast('✅ ' + t('saveSpot'))
-}
 
-// ---- UI Rendering ----
-function renderUI() {
-  document.getElementById('app-name').textContent = t('appName')
-  document.getElementById('btn-quick-save').title = t('quickSave')
-  document.getElementById('btn-mode').textContent = appState.appMode === 'boat' ? '⚓' : '🎣'
-  document.getElementById('btn-mode').title = appState.appMode === 'boat' ? t('boatMode') : t('shoreMode')
-  document.getElementById('hud-speed-label').textContent = t('speed')
-  document.getElementById('hud-heading-label').textContent = t('heading')
+  appState.spots.push(newSpot)
+  addSpotMarker(newSpot, onSpotTap)
   renderSpotsPanel()
+  closeInspector()
+  showToast(`✅ ${t('saveSpot')}: ${defaultName}`)
 }
 
-function renderSpotsPanel() {
-  const list = document.getElementById('spots-list')
-  if (!list) return
-  const query = document.getElementById('spots-search')?.value?.toLowerCase() || ''
-  const filtered = appState.spots.filter(s =>
-    s.name.toLowerCase().includes(query) ||
-    s.category?.toLowerCase().includes(query)
-  )
-  if (filtered.length === 0) {
-    list.innerHTML = `<div class="empty-state">${t('noSpots')}</div>`
-    return
-  }
-  list.innerHTML = filtered.map(spot => {
-    const ICONS = { fishing: '🎣', anchor: '⚓', danger: '⚠️', harbor: '⛵', dive: '🤿', wreck: '🚢' }
-    const icon = ICONS[spot.category] || '📍'
-    const d = new Date(spot.created_at)
-    return `<div class="spot-item" data-id="${spot.id}">
-      <div class="spot-icon" style="background:${spot.color}">${icon}</div>
-      <div class="spot-info">
-        <div class="spot-name">${spot.name}</div>
-        <div class="spot-meta">${formatCoordDD(spot.latitude, spot.longitude)}</div>
-        ${spot.depth_meters ? `<div class="spot-meta">⬇️ ${spot.depth_meters}m</div>` : ''}
-      </div>
-      <div class="spot-actions">
-        <button class="btn-icon" onclick="window.dzApp.goToSpot('${spot.id}')">🎯</button>
-        <button class="btn-icon" onclick="window.dzApp.editSpot('${spot.id}')">✏️</button>
-        <button class="btn-icon btn-danger" onclick="window.dzApp.confirmDeleteSpot('${spot.id}')">🗑️</button>
-      </div>
-    </div>`
-  }).join('')
-}
-
-// ---- Panel Management ----
-function openPanel(panelId) {
-  document.querySelectorAll('.bottom-panel').forEach(p => {
-    p.classList.toggle('active', p.id === panelId)
-  })
-  appState.activePanel = panelId
-}
-
-function closeAllPanels() {
-  document.querySelectorAll('.bottom-panel').forEach(p => p.classList.remove('active'))
-  appState.activePanel = null
-}
-
-// ---- Spot Sheet ----
 function openSpotSheet(spot) {
   appState.editingSpot = spot
-  const sheet = document.getElementById('panel-spot-edit')
-  if (!sheet) return
-  document.getElementById('edit-spot-name').value = spot.name || ''
-  document.getElementById('edit-spot-cat').value = spot.category || 'fishing'
-  document.getElementById('edit-spot-depth').value = spot.depth_meters || ''
-  document.getElementById('edit-spot-notes').value = spot.notes || ''
-  document.getElementById('edit-spot-visibility').value = spot.visibility_meters || ''
-  document.getElementById('edit-spot-seabed').value = spot.seabed_type || ''
-  document.getElementById('edit-spot-color').value = spot.color || '#FF3B30'
+  
+  const nameEl = document.getElementById('edit-spot-name')
+  const catEl = document.getElementById('edit-spot-cat')
+  const depthEl = document.getElementById('edit-spot-depth')
+  const visEl = document.getElementById('edit-spot-visibility')
+  const seabedEl = document.getElementById('edit-spot-seabed')
+  const colorEl = document.getElementById('edit-spot-color')
+  const notesEl = document.getElementById('edit-spot-notes')
+
+  if (nameEl) nameEl.value = spot.name || ''
+  if (catEl) catEl.value = spot.category || 'fishing'
+  if (depthEl) depthEl.value = spot.depth_meters !== null ? spot.depth_meters : ''
+  if (visEl) visEl.value = spot.visibility_meters !== null ? spot.visibility_meters : ''
+  if (seabedEl) seabedEl.value = spot.seabed_type || ''
+  if (colorEl) colorEl.value = spot.color || '#0ea5e9'
+  if (notesEl) notesEl.value = spot.notes || ''
+
   openPanel('panel-spot-edit')
 }
 
 async function saveEditingSpot() {
   if (!appState.editingSpot) return
+  
+  const name = document.getElementById('edit-spot-name')?.value?.trim() || 'Spot'
+  const category = document.getElementById('edit-spot-cat')?.value || 'fishing'
+  const depth = parseFloat(document.getElementById('edit-spot-depth')?.value) || null
+  const visibility = parseFloat(document.getElementById('edit-spot-visibility')?.value) || null
+  const seabed = document.getElementById('edit-spot-seabed')?.value || null
+  const color = document.getElementById('edit-spot-color')?.value || '#0ea5e9'
+  const notes = document.getElementById('edit-spot-notes')?.value || ''
+
   const updated = {
     ...appState.editingSpot,
-    name: document.getElementById('edit-spot-name').value,
-    category: document.getElementById('edit-spot-cat').value,
-    depth_meters: parseFloat(document.getElementById('edit-spot-depth').value) || null,
-    notes: document.getElementById('edit-spot-notes').value,
-    visibility_meters: parseFloat(document.getElementById('edit-spot-visibility').value) || null,
-    seabed_type: document.getElementById('edit-spot-seabed').value || null,
-    color: document.getElementById('edit-spot-color').value,
+    name,
+    category,
+    depth_meters: depth,
+    visibility_meters: visibility,
+    seabed_type: seabed,
+    color,
+    notes
   }
+
   const saved = await saveSpot(updated)
   const idx = appState.spots.findIndex(s => s.id === saved.id)
   if (idx >= 0) appState.spots[idx] = saved
   else appState.spots.push(saved)
+
   addSpotMarker(saved, onSpotTap)
   closeAllPanels()
   renderSpotsPanel()
   showToast('✅ ' + t('save'))
 }
 
-// ---- Anchor ----
+function renderSpotsPanel() {
+  const list = document.getElementById('spots-list')
+  if (!list) return
+
+  const query = document.getElementById('spots-search')?.value?.toLowerCase() || ''
+  const filtered = appState.spots.filter(s =>
+    (s.name && s.name.toLowerCase().includes(query)) ||
+    (s.category && s.category.toLowerCase().includes(query)) ||
+    (s.notes && s.notes.toLowerCase().includes(query))
+  )
+
+  if (filtered.length === 0) {
+    list.innerHTML = `<div class="empty-state">${t('noSpots')}</div>`
+    return
+  }
+
+  const ICONS = { fishing: '🎣', anchor: '⚓', danger: '⚠️', harbor: '⛵', dive: '🤿', wreck: '🚢' }
+
+  list.innerHTML = filtered.map(spot => {
+    const icon = ICONS[spot.category] || '📍'
+    const depthBadge = spot.depth_meters ? `<span style="color:#38bdf8;font-weight:700">⬇️ ${Math.round(spot.depth_meters)}m</span> • ` : ''
+    const visBadge = spot.visibility_meters ? `<span style="color:#2dd4bf">👁️ ${spot.visibility_meters}m</span> • ` : ''
+
+    return `
+      <div class="spot-item" data-id="${spot.id}">
+        <div class="spot-icon" style="background:${spot.color || '#0ea5e9'}">${icon}</div>
+        <div class="spot-info" onclick="window.dzApp.goToSpot('${spot.id}')">
+          <div class="spot-name">${spot.name}</div>
+          <div class="spot-meta">
+            ${depthBadge}${visBadge}${formatCoordDD(spot.latitude, spot.longitude)}
+          </div>
+        </div>
+        <div class="spot-actions">
+          <button class="btn-icon" onclick="window.dzApp.goToSpot('${spot.id}')" title="Centrer">🎯</button>
+          <button class="btn-icon" onclick="window.dzApp.editSpot('${spot.id}')" title="Modifier">✏️</button>
+          <button class="btn-icon btn-danger" onclick="window.dzApp.confirmDeleteSpot('${spot.id}')" title="Supprimer">🗑️</button>
+        </div>
+      </div>
+    `
+  }).join('')
+}
+
+// ---- Panel Navigation & Bottom Sheets ----
+function openPanel(panelId) {
+  closeInspector()
+  
+  // If clicking active panel, toggle close
+  if (appState.activePanel === panelId) {
+    closeAllPanels()
+    return
+  }
+
+  document.querySelectorAll('.bottom-panel').forEach(p => {
+    p.classList.toggle('active', p.id === panelId)
+  })
+
+  // Highlight active toolbar button
+  document.querySelectorAll('.tb-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.id === `btn-open-${panelId.replace('panel-', '')}`)
+  })
+
+  // Show backdrop
+  const backdrop = document.getElementById('panel-backdrop')
+  if (backdrop) backdrop.classList.add('active')
+
+  appState.activePanel = panelId
+}
+
+function closeAllPanels() {
+  document.querySelectorAll('.bottom-panel').forEach(p => p.classList.remove('active'))
+  document.querySelectorAll('.tb-btn').forEach(b => b.classList.remove('active'))
+  
+  const backdrop = document.getElementById('panel-backdrop')
+  if (backdrop) backdrop.classList.remove('active')
+
+  appState.activePanel = null
+}
+
+// ---- Anchor Drag Alarm ----
 function activateAnchorAlarm() {
-  const { lat, lon } = appState.gps
-  if (!lat) { showToast('❌ ' + t('gpsWaiting')); return }
-  const radius = parseInt(document.getElementById('anchor-radius')?.value || '50')
+  const lat = appState.gps.lat
+  const lon = appState.gps.lon
+  const radius = parseInt(document.getElementById('anchor-radius')?.value || '45')
+  
   setAnchor(lat, lon, radius)
   showAnchorZone(lat, lon, radius)
   appState.anchor = { active: true, lat, lon, radius }
+
   setAnchorCallbacks(
     (info) => {
-      showToast(`🔔 ${t('anchorDrift')} ${info.distance}m`, true)
-      document.getElementById('anchor-status')?.classList.add('alarm')
-      document.getElementById('anchor-status-text').textContent = `${t('anchorDrift')} — ${info.distance}m`
+      showToast(`🚨 ${t('anchorDrift')} ${info.distance}m !`, true)
+      const st = document.getElementById('anchor-status')
+      const txt = document.getElementById('anchor-status-text')
+      if (st) st.classList.add('alarm')
+      if (txt) txt.textContent = `🚨 ${t('anchorDrift')} (${info.distance}m)`
     },
     () => {
-      document.getElementById('anchor-status')?.classList.remove('alarm')
-      document.getElementById('anchor-status-text').textContent = t('anchorSafe')
+      const st = document.getElementById('anchor-status')
+      const txt = document.getElementById('anchor-status-text')
+      if (st) st.classList.remove('alarm')
+      if (txt) txt.textContent = `✅ ${t('anchorSafe')}`
     }
   )
-  document.getElementById('btn-anchor-set').classList.add('hidden')
-  document.getElementById('anchor-active-ui').classList.remove('hidden')
-  document.getElementById('anchor-status-text').textContent = t('anchorSafe')
+
+  document.getElementById('btn-anchor-set-wrap')?.classList.add('hidden')
+  document.getElementById('anchor-active-ui')?.classList.remove('hidden')
+  
+  const txt = document.getElementById('anchor-status-text')
+  if (txt) txt.textContent = `✅ ${t('anchorSafe')}`
+  
   showToast(`⚓ ${t('anchorAlarm')}: ${radius}m`)
 }
 
@@ -253,8 +421,9 @@ function deactivateAnchor() {
   clearAnchor()
   hideAnchorZone()
   appState.anchor.active = false
-  document.getElementById('btn-anchor-set').classList.remove('hidden')
-  document.getElementById('anchor-active-ui').classList.add('hidden')
+  
+  document.getElementById('btn-anchor-set-wrap')?.classList.remove('hidden')
+  document.getElementById('anchor-active-ui')?.classList.add('hidden')
   showToast('⚓ ' + t('anchorDisable'))
 }
 
@@ -268,60 +437,73 @@ function updateAnchorStatus(result) {
   }
 }
 
-// ---- Weather ----
+// ---- Marine Weather (Open-Meteo) ----
 async function loadWeather() {
-  const { lat, lon } = appState.gps
-  const fetchLat = lat || 36.7
-  const fetchLon = lon || 3.1
-  document.getElementById('weather-loading').classList.remove('hidden')
-  const data = await fetchMarineWeather(fetchLat, fetchLon)
-  document.getElementById('weather-loading').classList.add('hidden')
-  if (!data) {
-    document.getElementById('weather-content').innerHTML = `<div class="empty-state">${t('noWeather')}</div>`
-    return
+  const lat = appState.gps.lat || 36.75
+  const lon = appState.gps.lon || 3.06
+
+  const loading = document.getElementById('weather-loading')
+  const content = document.getElementById('weather-content')
+
+  if (loading) loading.classList.remove('hidden')
+  
+  try {
+    const data = await fetchMarineWeather(lat, lon)
+    if (loading) loading.classList.add('hidden')
+
+    if (!data) {
+      if (content) content.innerHTML = `<div class="empty-state">${t('noWeather')}</div>`
+      return
+    }
+    appState.weather = data
+    renderWeatherPanel(data)
+  } catch (err) {
+    if (loading) loading.classList.add('hidden')
+    if (content) content.innerHTML = `<div class="empty-state">${t('noWeather')}</div>`
   }
-  appState.weather = data
-  renderWeatherPanel(data)
 }
 
 function renderWeatherPanel(data) {
   const c = data.current
   const el = document.getElementById('weather-content')
   if (!el || !c) return
+
   const isCache = data.isCache
   const bft = c.windSpeed !== null ? beaufortScale(c.windSpeed) : '—'
   const windDir = c.windDir !== null ? degreesToCompass(c.windDir) : '—'
   const waveLabel = waveConditionLabel(c.waveHeight)
 
   el.innerHTML = `
-    ${isCache ? `<div class="cache-badge">📶 ${t('weatherOffline')} (${data.cacheAge}min)</div>` : ''}
+    ${isCache ? `<div class="cache-badge">📶 ${t('weatherOffline')}</div>` : ''}
     <div class="weather-grid">
       <div class="weather-card">
         <div class="w-icon">🌊</div>
         <div class="w-label">${t('waveHeight')}</div>
-        <div class="w-value">${c.waveHeight !== null ? c.waveHeight.toFixed(1) + 'm' : '—'}</div>
+        <div class="w-value">${c.waveHeight !== null ? c.waveHeight.toFixed(1) + ' m' : '—'}</div>
         <div class="w-sub">${waveLabel}</div>
       </div>
       <div class="weather-card">
         <div class="w-icon">⏱️</div>
         <div class="w-label">${t('wavePeriod')}</div>
-        <div class="w-value">${c.wavePeriod !== null ? c.wavePeriod.toFixed(0) + 's' : '—'}</div>
-        <div class="w-sub">${c.waveDir !== null ? degreesToCompass(c.waveDir) : ''}</div>
+        <div class="w-value">${c.wavePeriod !== null ? c.wavePeriod.toFixed(0) + ' s' : '—'}</div>
+        <div class="w-sub">${c.waveDir !== null ? 'Dir: ' + degreesToCompass(c.waveDir) : ''}</div>
       </div>
       <div class="weather-card">
         <div class="w-icon">💨</div>
         <div class="w-label">${t('windSpeed')}</div>
-        <div class="w-value">${c.windSpeed !== null ? Math.round(c.windSpeed) + 'kts' : '—'}</div>
+        <div class="w-value">${c.windSpeed !== null ? Math.round(c.windSpeed) + ' kts' : '—'}</div>
         <div class="w-sub">Bft ${bft} • ${windDir}</div>
       </div>
       <div class="weather-card">
         <div class="w-icon">🌡️</div>
         <div class="w-label">${t('seaTemp')}</div>
         <div class="w-value">${c.seaTemp !== null ? c.seaTemp.toFixed(1) + '°C' : '—'}</div>
-        <div class="w-sub">${c.windGusts !== null ? '💨 Rafales: ' + Math.round(c.windGusts) + 'kts' : ''}</div>
+        <div class="w-sub">${c.windGusts !== null ? 'Rafales: ' + Math.round(c.windGusts) + ' kts' : ''}</div>
       </div>
     </div>
-    <div style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:8px">${t('lastUpdate')}: ${formatWeatherTime(c.time, appState.lang)}</div>
+    <div style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:10px">
+      ${t('lastUpdate')}: ${formatWeatherTime(c.time, appState.lang)}
+    </div>
   `
 }
 
@@ -330,53 +512,134 @@ function toggleNightMode() {
   appState.nightMode = !appState.nightMode
   applyTheme()
   saveSetting('nightMode', appState.nightMode)
+  showToast(appState.nightMode ? '🔴 ' + t('nightRed') : '☀️ Mode Jour')
 }
 
 function applyTheme() {
   document.body.classList.toggle('night-mode', appState.nightMode)
   setNightMode(appState.nightMode)
+  
   const btn = document.getElementById('btn-night')
   if (btn) btn.classList.toggle('active', appState.nightMode)
+
+  const toggleBtn = document.getElementById('night-toggle-btn')
+  if (toggleBtn) toggleBtn.textContent = appState.nightMode ? 'ON' : 'OFF'
 }
 
-// ---- Layer Toggles ----
+// ---- Layer Management ----
 function handleLayerToggle(name) {
   const btn = document.getElementById(`layer-btn-${name}`)
   const nowActive = !isLayerActive(name)
   toggleLayer(name, nowActive)
-  btn?.classList.toggle('active', nowActive)
+  if (btn) btn.classList.toggle('active', nowActive)
 }
 
-// ---- Mode Toggle ----
-function toggleMode() {
-  appState.appMode = appState.appMode === 'boat' ? 'shore' : 'boat'
-  saveSetting('appMode', appState.appMode)
-  document.getElementById('btn-mode').textContent = appState.appMode === 'boat' ? '⚓' : '🎣'
-  showToast(appState.appMode === 'boat' ? t('boatMode') : t('shoreMode'))
+// ---- Operating Mode Toggle (Boat vs Shore) ----
+function setMode(mode) {
+  appState.appMode = mode
+  saveSetting('appMode', mode)
+  
+  const pill = document.getElementById('hud-mode-pill')
+  const fabBtn = document.getElementById('btn-mode')
+  const boatBtn = document.getElementById('btn-mode-boat')
+  const shoreBtn = document.getElementById('btn-mode-shore')
+
+  const label = mode === 'boat' ? `⚓ ${t('boatMode')}` : `🎣 ${t('shoreMode')}`
+  if (pill) pill.textContent = label
+  if (fabBtn) fabBtn.textContent = mode === 'boat' ? '⚓' : '🎣'
+
+  if (boatBtn) boatBtn.classList.toggle('active', mode === 'boat')
+  if (shoreBtn) shoreBtn.classList.toggle('active', mode === 'shore')
+
+  showToast(label)
 }
 
-// ---- Language ----
+// ---- Language & Localization ----
 function changeLanguage(lang) {
   appState.lang = lang
   setLanguage(lang)
   saveSetting('lang', lang)
-  renderUI()
-  closeAllPanels()
+  applyLanguage(lang)
+  renderSpotsPanel()
   showToast('🌐 ' + (lang === 'fr' ? 'Français' : lang === 'ar' ? 'العربية' : 'English'))
 }
 
-// ---- SOS ----
+function applyLanguage(lang) {
+  // RTL / LTR direction
+  document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr'
+  document.documentElement.lang = lang
+
+  // Brand & HUD
+  const appName = document.getElementById('app-name')
+  if (appName) appName.textContent = t('appName')
+
+  const speedLbl = document.getElementById('hud-speed-label')
+  if (speedLbl) speedLbl.textContent = t('speed')
+
+  const headingLbl = document.getElementById('hud-heading-label')
+  if (headingLbl) headingLbl.textContent = t('heading')
+
+  const depthLbl = document.getElementById('hud-depth-label')
+  if (depthLbl) depthLbl.textContent = t('depth')
+
+  const coordsLbl = document.getElementById('hud-coords-label')
+  if (coordsLbl) coordsLbl.textContent = t('coordinates')
+
+  // Toolbar
+  const tbSpots = document.getElementById('tb-label-spots')
+  if (tbSpots) tbSpots.textContent = t('spots')
+
+  const tbAnchor = document.getElementById('tb-label-anchor')
+  if (tbAnchor) tbAnchor.textContent = t('catAnchor')
+
+  const tbWeather = document.getElementById('tb-label-weather')
+  if (tbWeather) tbWeather.textContent = t('weather')
+
+  const tbLayers = document.getElementById('tb-label-layers')
+  if (tbLayers) tbLayers.textContent = t('layers')
+
+  const tbSettings = document.getElementById('tb-label-settings')
+  if (tbSettings) tbSettings.textContent = t('settings')
+
+  // Panels
+  const pSpots = document.getElementById('panel-title-spots')
+  if (pSpots) pSpots.textContent = `📍 ${t('spots')}`
+
+  const pAnchor = document.getElementById('panel-title-anchor')
+  if (pAnchor) pAnchor.textContent = `⚓ ${t('anchorAlarm')}`
+
+  const pWeather = document.getElementById('panel-title-weather')
+  if (pWeather) pWeather.textContent = `🌊 ${t('weather')}`
+
+  const pLayers = document.getElementById('panel-title-layers')
+  if (pLayers) pLayers.textContent = `🗺️ ${t('layers')}`
+
+  const pSettings = document.getElementById('panel-title-settings')
+  if (pSettings) pSettings.textContent = `⚙️ ${t('settings')}`
+
+  // Mode pill
+  const pill = document.getElementById('hud-mode-pill')
+  if (pill) pill.textContent = appState.appMode === 'boat' ? `⚓ ${t('boatMode')}` : `🎣 ${t('shoreMode')}`
+
+  // Lang buttons active states
+  document.getElementById('lang-fr')?.classList.toggle('active', lang === 'fr')
+  document.getElementById('lang-ar')?.classList.toggle('active', lang === 'ar')
+  document.getElementById('lang-en')?.classList.toggle('active', lang === 'en')
+}
+
+// ---- Emergency SOS SMS ----
 function sendSOS() {
   const { lat, lon } = appState.gps
-  if (!lat) { showToast('❌ ' + t('gpsWaiting')); return }
-  const time = new Date().toLocaleString()
+  const time = new Date().toLocaleTimeString()
   const msg = t('sosMessage', {
-    lat: lat.toFixed(5), lon: lon.toFixed(5), time
+    lat: lat.toFixed(5),
+    lon: lon.toFixed(5),
+    time
   })
   window.location.href = `sms:?body=${encodeURIComponent(msg)}`
 }
 
-// ---- GPX ----
+// ---- GPX Export / Import ----
 async function handleExportGPX() {
   const gpx = await exportGPX()
   const blob = new Blob([gpx], { type: 'application/gpx+xml' })
@@ -390,25 +653,31 @@ async function handleExportGPX() {
 }
 
 async function handleImportGPX(file) {
-  const text = await file.text()
-  const imported = await importGPX(text)
-  await loadSpots()
-  renderSpotsPanel()
-  showToast(`✅ Importé ${imported.length} spots`)
+  try {
+    const text = await file.text()
+    const imported = await importGPX(text)
+    await loadSpots()
+    showToast(`✅ Importé ${imported.length} spots`)
+  } catch (err) {
+    showToast('❌ Erreur format GPX')
+  }
 }
 
-// ---- Ruler ----
+// ---- Distance & Bearing Ruler ----
 function startRulerMode() {
-  appState.rulerActive = true
   showToast('📏 ' + t('rulerStart'))
   closeAllPanels()
+  closeInspector()
+  
+  const clearBtn = document.getElementById('btn-clear-ruler')
+  if (clearBtn) clearBtn.classList.remove('hidden')
+
   startRuler(({ distNM, bearing }) => {
-    appState.rulerActive = false
-    showToast(t('rulerResult', { dist: distNM, bearing }), false, 5000)
+    showToast(t('rulerResult', { dist: distNM, bearing }), false, 6000)
   })
 }
 
-// ---- Toast ----
+// ---- Toast Notification ----
 function showToast(msg, persistent = false, duration = 3000) {
   const toast = document.getElementById('toast')
   if (!toast) return
@@ -419,21 +688,37 @@ function showToast(msg, persistent = false, duration = 3000) {
   }
 }
 
-// ---- Event Listeners ----
+// ---- Global Wire Event Listeners ----
 function setupEventListeners() {
+  // Center button
   document.getElementById('btn-center')?.addEventListener('click', () => {
-    const { lat, lon } = appState.gps
-    if (lat) panToPosition(lat, lon)
-    else showToast('❌ ' + t('gpsWaiting'))
+    panToPosition(appState.gps.lat, appState.gps.lon, 14)
+    showToast('🎯 ' + t('centerMap'))
   })
 
-  document.getElementById('btn-quick-save')?.addEventListener('click', quickSaveSpot)
-  document.getElementById('btn-mode')?.addEventListener('click', toggleMode)
-  document.getElementById('btn-night')?.addEventListener('click', toggleNightMode)
+  // Mode button (FAB & Settings)
+  document.getElementById('btn-mode')?.addEventListener('click', () => {
+    setMode(appState.appMode === 'boat' ? 'shore' : 'boat')
+  })
+  document.getElementById('hud-mode-pill')?.addEventListener('click', () => {
+    setMode(appState.appMode === 'boat' ? 'shore' : 'boat')
+  })
+  document.getElementById('btn-mode-boat')?.addEventListener('click', () => setMode('boat'))
+  document.getElementById('btn-mode-shore')?.addEventListener('click', () => setMode('shore'))
 
+  // Night mode (FAB & Settings)
+  document.getElementById('btn-night')?.addEventListener('click', toggleNightMode)
+  document.getElementById('night-toggle-btn')?.addEventListener('click', toggleNightMode)
+
+  // Layers FAB button
+  document.getElementById('btn-open-layers-fab')?.addEventListener('click', () => openPanel('panel-layers'))
+
+  // Quick save button
+  document.getElementById('btn-quick-save')?.addEventListener('click', quickSaveSpot)
+
+  // Toolbar navigation tabs
   document.getElementById('btn-open-spots')?.addEventListener('click', () => openPanel('panel-spots'))
   document.getElementById('btn-open-anchor')?.addEventListener('click', () => openPanel('panel-anchor'))
-  document.getElementById('btn-open-weather')?.then // not a promise, just get element
   document.getElementById('btn-open-weather')?.addEventListener('click', () => {
     openPanel('panel-weather')
     loadWeather()
@@ -441,91 +726,124 @@ function setupEventListeners() {
   document.getElementById('btn-open-layers')?.addEventListener('click', () => openPanel('panel-layers'))
   document.getElementById('btn-open-settings')?.addEventListener('click', () => openPanel('panel-settings'))
 
-  // Close panels
+  // Panel close buttons
   document.querySelectorAll('.panel-close').forEach(btn => {
     btn.addEventListener('click', closeAllPanels)
   })
 
-  // Spot search
+  // Backdrop overlay click
+  document.getElementById('panel-backdrop')?.addEventListener('click', closeAllPanels)
+
+  // Inspector buttons
+  document.getElementById('btn-close-inspector')?.addEventListener('click', closeInspector)
+  document.getElementById('btn-insp-add-spot')?.addEventListener('click', () => {
+    if (appState.tappedPoint) {
+      openSpotSheet({
+        name: `Spot ${appState.tappedPoint.lat.toFixed(3)}N`,
+        latitude: appState.tappedPoint.lat,
+        longitude: appState.tappedPoint.lon,
+        depth_meters: appState.tappedPoint.depth || null,
+        category: 'fishing'
+      })
+    }
+  })
+
+  // Spots search filter
   document.getElementById('spots-search')?.addEventListener('input', renderSpotsPanel)
 
-  // Spot edit save/cancel
+  // Spot edit save & cancel
   document.getElementById('btn-save-spot')?.addEventListener('click', saveEditingSpot)
   document.getElementById('btn-cancel-spot')?.addEventListener('click', closeAllPanels)
 
-  // Anchor
+  // Anchor alarm controls
+  document.getElementById('anchor-radius')?.addEventListener('input', (e) => {
+    const valEl = document.getElementById('anchor-radius-val')
+    if (valEl) valEl.textContent = `${e.target.value}m`
+  })
   document.getElementById('btn-anchor-set')?.addEventListener('click', activateAnchorAlarm)
   document.getElementById('btn-anchor-clear')?.addEventListener('click', deactivateAnchor)
 
-  // Weather refresh
+  // Weather fetch
   document.getElementById('btn-fetch-weather')?.addEventListener('click', loadWeather)
 
-  // Layer toggles
-  ['osm', 'satellite', 'seamap', 'bathy'].forEach(name => {
+  // Map layer toggle buttons
+  const layerNames = ['osm', 'satellite', 'seamap', 'bathy', 'depthContour']
+  layerNames.forEach(name => {
     document.getElementById(`layer-btn-${name}`)?.addEventListener('click', () => handleLayerToggle(name))
   })
 
-  // Language
+  // Language buttons
   document.getElementById('lang-fr')?.addEventListener('click', () => changeLanguage('fr'))
   document.getElementById('lang-ar')?.addEventListener('click', () => changeLanguage('ar'))
   document.getElementById('lang-en')?.addEventListener('click', () => changeLanguage('en'))
 
-  // Units toggle
+  // Units toggle (kts / kmh)
   document.getElementById('units-toggle')?.addEventListener('click', () => {
     appState.units = appState.units === 'knots' ? 'kmh' : 'knots'
     saveSetting('units', appState.units)
-    document.getElementById('units-toggle').textContent = appState.units === 'knots' ? 'kts' : 'km/h'
-  })
-
-  // Coord format
-  document.getElementById('coord-toggle')?.addEventListener('click', () => {
-    appState.coordFormat = appState.coordFormat === 'DD' ? 'DMS' : 'DD'
-    saveSetting('coordFormat', appState.coordFormat)
-    document.getElementById('coord-toggle').textContent = appState.coordFormat
+    const btn = document.getElementById('units-toggle')
+    if (btn) btn.textContent = appState.units === 'knots' ? 'kts' : 'km/h'
     updateHUD()
   })
 
-  // SOS
-  document.getElementById('btn-sos')?.addEventListener('click', sendSOS)
+  // Coord format toggle (DD / DMS)
+  document.getElementById('coord-toggle')?.addEventListener('click', () => {
+    appState.coordFormat = appState.coordFormat === 'DD' ? 'DMS' : 'DD'
+    saveSetting('coordFormat', appState.coordFormat)
+    const btn = document.getElementById('coord-toggle')
+    if (btn) btn.textContent = appState.coordFormat
+    updateHUD()
+  })
 
-  // GPX
+  // GPX export & import
   document.getElementById('btn-export-gpx')?.addEventListener('click', handleExportGPX)
   document.getElementById('btn-import-gpx')?.addEventListener('click', () => {
-    document.getElementById('gpx-file-input').click()
+    document.getElementById('gpx-file-input')?.click()
   })
-  document.getElementById('gpx-file-input')?.addEventListener('change', e => {
-    if (e.target.files[0]) handleImportGPX(e.target.files[0])
+  document.getElementById('gpx-file-input')?.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files[0]) handleImportGPX(e.target.files[0])
   })
 
-  // Ruler
+  // Ruler measurement
   document.getElementById('btn-ruler')?.addEventListener('click', startRulerMode)
+  document.getElementById('btn-ruler-settings')?.addEventListener('click', () => {
+    closeAllPanels()
+    startRulerMode()
+  })
   document.getElementById('btn-clear-ruler')?.addEventListener('click', () => {
     clearRuler()
-    appState.rulerActive = false
+    document.getElementById('btn-clear-ruler')?.classList.add('hidden')
     showToast(t('clearRuler'))
   })
+
+  // Emergency SOS
+  document.getElementById('btn-sos')?.addEventListener('click', sendSOS)
 }
 
-// ---- Global API for inline handlers ----
+// Global window API for inline list event handlers
 window.dzApp = {
   goToSpot(id) {
     const spot = appState.spots.find(s => s.id === id)
-    if (spot) { panToPosition(spot.latitude, spot.longitude); closeAllPanels() }
+    if (spot) {
+      panToPosition(spot.latitude, spot.longitude, 15)
+      closeAllPanels()
+      showToast(`🎯 ${spot.name}`)
+    }
   },
   editSpot(id) {
     const spot = appState.spots.find(s => s.id === id)
     if (spot) openSpotSheet(spot)
   },
-  confirmDeleteSpot(id) {
+  async confirmDeleteSpot(id) {
     if (confirm(t('confirmDelete'))) {
-      deleteSpot(id).then(() => {
-        appState.spots = appState.spots.filter(s => s.id !== id)
-        removeSpotMarker(id)
-        renderSpotsPanel()
-        showToast('🗑️ ' + t('delete'))
-      })
+      await deleteSpot(id)
+      appState.spots = appState.spots.filter(s => s.id !== id)
+      removeSpotMarker(id)
+      renderSpotsPanel()
+      showToast('🗑️ ' + t('delete'))
     }
   }
 }
 
+// Run app
 init()

@@ -2,6 +2,7 @@
   "name": "dz-marine",
   "version": "1.0.0",
   "description": "DZ Marine - Algerian Coastal GPS & Marine Charting App",
+  "type": "module",
   "main": "src/main.js",
   "scripts": {
     "dev": "vite",

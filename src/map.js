@@ -4,17 +4,18 @@ import { haversineDistance, bearingTo } from './anchor.js'
 
 let map = null
 let positionMarker = null
-let bearingCone = null
+let positionAccuracyCircle = null
 let anchorCircle = null
 let anchorMarker = null
 let rulerPoints = []
 let rulerLine = null
 let rulerMarkers = []
 let spotMarkers = new Map()
+let tapMarker = null
 
 // Tile layers
 let layers = {}
-let activeLayers = new Set(['osm'])
+let activeLayers = new Set(['osm', 'seamap', 'bathy', 'depthContour'])
 
 const TILE_DEFS = {
   osm: {
@@ -27,31 +28,50 @@ const TILE_DEFS = {
   },
   seamap: {
     url: 'https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png',
-    options: { attribution: '© OpenSeaMap', maxZoom: 18, opacity: 0.9 }
+    options: { attribution: '© OpenSeaMap', maxZoom: 18, opacity: 0.95 }
   },
   bathy: {
     url: 'https://tiles.emodnet-bathymetry.eu/2020/baselayer/web_mercator/{z}/{x}/{y}.png',
-    options: { attribution: '© EMODnet Bathymetry', maxZoom: 11, opacity: 0.65 }
+    options: { attribution: '© EMODnet Bathymetry', maxNativeZoom: 11, maxZoom: 19, opacity: 0.75 }
+  },
+  depthContour: {
+    url: 'https://services.arcgisonline.com/arcgis/rest/services/Ocean/World_Ocean_Reference/MapServer/tile/{z}/{y}/{x}',
+    options: { attribution: '© ESRI Depth Soundings', maxZoom: 16, opacity: 0.85 }
   }
 }
 
-export function initMap(containerId) {
-  // Algeria center
+export function initMap(containerId, onMapClickCallback) {
+  // Center on Algiers / Algerian central coastline
   map = L.map(containerId, {
-    center: [36.7, 3.1],
-    zoom: 10,
+    center: [36.75, 3.06],
+    zoom: 11,
     zoomControl: false,
-    attributionControl: true
+    attributionControl: false
   })
 
-  // Default: OSM base
-  layers.osm = L.tileLayer(TILE_DEFS.osm.url, TILE_DEFS.osm.options).addTo(map)
+  // Initialize all tile layers
+  layers.osm = L.tileLayer(TILE_DEFS.osm.url, TILE_DEFS.osm.options)
   layers.satellite = L.tileLayer(TILE_DEFS.satellite.url, TILE_DEFS.satellite.options)
   layers.seamap = L.tileLayer(TILE_DEFS.seamap.url, TILE_DEFS.seamap.options)
   layers.bathy = L.tileLayer(TILE_DEFS.bathy.url, TILE_DEFS.bathy.options)
+  layers.depthContour = L.tileLayer(TILE_DEFS.depthContour.url, TILE_DEFS.depthContour.options)
 
-  // Attribution control compact
-  map.attributionControl.setPrefix('')
+  // Add default active layers to map
+  layers.osm.addTo(map)
+  layers.seamap.addTo(map)
+  layers.bathy.addTo(map)
+  layers.depthContour.addTo(map)
+
+  // Map click handler
+  map.on('click', (e) => {
+    if (rulerMode) {
+      handleRulerClick(e)
+      return
+    }
+    if (onMapClickCallback) {
+      onMapClickCallback(e.latlng)
+    }
+  })
 
   return map
 }
@@ -73,40 +93,74 @@ export function toggleLayer(name, show) {
 
 export function isLayerActive(name) { return activeLayers.has(name) }
 
-// Position marker with bearing cone
+// Position marker with boat icon & directional cone
 export function updatePosition(lat, lon, cog, accuracy) {
+  if (!map) return
   const latlng = [lat, lon]
 
   if (!positionMarker) {
-    // Boat icon
     const boatIcon = L.divIcon({
       html: `<div class="boat-marker" style="transform: rotate(${cog || 0}deg)">
         <div class="boat-cone"></div>
         <div class="boat-dot"></div>
       </div>`,
-      iconSize: [40, 40],
-      iconAnchor: [20, 20],
+      iconSize: [44, 44],
+      iconAnchor: [22, 22],
       className: ''
     })
     positionMarker = L.marker(latlng, { icon: boatIcon, zIndexOffset: 1000 }).addTo(map)
 
-    if (accuracy) {
-      anchorCircle = L.circle(latlng, { radius: accuracy, color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.05, weight: 1 }).addTo(map)
+    if (accuracy && accuracy > 0) {
+      positionAccuracyCircle = L.circle(latlng, {
+        radius: accuracy,
+        color: '#0ea5e9',
+        fillColor: '#0ea5e9',
+        fillOpacity: 0.12,
+        weight: 1
+      }).addTo(map)
     }
   } else {
     positionMarker.setLatLng(latlng)
-    const icon = positionMarker.getIcon()
     const el = positionMarker.getElement()
     if (el) {
       const inner = el.querySelector('.boat-marker')
       if (inner) inner.style.transform = `rotate(${cog || 0}deg)`
     }
-    if (anchorCircle && accuracy) anchorCircle.setLatLng(latlng).setRadius(accuracy)
+    if (positionAccuracyCircle && accuracy) {
+      positionAccuracyCircle.setLatLng(latlng).setRadius(accuracy)
+    }
   }
 }
 
-export function panToPosition(lat, lon) {
-  if (map) map.panTo([lat, lon], { animate: true, duration: 0.8 })
+export function panToPosition(lat, lon, zoom = null) {
+  if (!map) return
+  if (zoom) {
+    map.setView([lat, lon], zoom, { animate: true, duration: 0.8 })
+  } else {
+    map.panTo([lat, lon], { animate: true, duration: 0.8 })
+  }
+}
+
+// Temporary tap indicator on map
+export function setTapMarker(lat, lon) {
+  if (tapMarker) {
+    tapMarker.setLatLng([lat, lon])
+  } else {
+    const tapIcon = L.divIcon({
+      html: `<div style="width:16px;height:16px;background:#0ea5e9;border:3px solid white;border-radius:50%;box-shadow:0 0 10px #0ea5e9"></div>`,
+      iconSize: [16, 16],
+      iconAnchor: [8, 8],
+      className: ''
+    })
+    tapMarker = L.marker([lat, lon], { icon: tapIcon, zIndexOffset: 900 }).addTo(map)
+  }
+}
+
+export function clearTapMarker() {
+  if (tapMarker) {
+    tapMarker.remove()
+    tapMarker = null
+  }
 }
 
 // Spot markers
@@ -120,19 +174,28 @@ const CATEGORY_ICONS = {
 }
 
 export function addSpotMarker(spot, onTap) {
+  if (!map) return
   if (spotMarkers.has(spot.id)) {
     spotMarkers.get(spot.id).remove()
   }
   const cat = CATEGORY_ICONS[spot.category] || CATEGORY_ICONS.fishing
+  const depthBadge = spot.depth_meters ? `<div style="position:absolute;bottom:-6px;right:-8px;background:#0f172a;color:#38bdf8;font-size:9px;font-weight:700;padding:1px 4px;border-radius:6px;border:1px solid #38bdf8">${Math.round(spot.depth_meters)}m</div>` : ''
+
   const icon = L.divIcon({
-    html: `<div style="background:${spot.color || cat.color};width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.4)">${cat.icon}</div>`,
+    html: `<div style="position:relative;background:${spot.color || cat.color};width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:17px;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.5)">
+      ${cat.icon}
+      ${depthBadge}
+    </div>`,
     iconSize: [36, 36],
     iconAnchor: [18, 18],
     className: ''
   })
   const marker = L.marker([spot.latitude, spot.longitude], { icon })
     .addTo(map)
-    .on('click', () => onTap(spot))
+    .on('click', (e) => {
+      L.DomEvent.stopPropagation(e)
+      onTap(spot)
+    })
   spotMarkers.set(spot.id, marker)
   return marker
 }
@@ -152,20 +215,20 @@ export function clearAllSpotMarkers() {
 // Anchor zone
 export function showAnchorZone(lat, lon, radius) {
   if (anchorMarker) anchorMarker.remove()
-  if (bearingCone) bearingCone.remove()
+  if (anchorCircle) anchorCircle.remove()
 
   const anchorIcon = L.divIcon({
-    html: `<div style="font-size:24px;text-align:center;line-height:1">⚓</div>`,
+    html: `<div style="font-size:26px;text-align:center;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.6))">⚓</div>`,
     iconSize: [30, 30],
-    iconAnchor: [15, 28],
+    iconAnchor: [15, 26],
     className: ''
   })
   anchorMarker = L.marker([lat, lon], { icon: anchorIcon }).addTo(map)
-  bearingCone = L.circle([lat, lon], {
+  anchorCircle = L.circle([lat, lon], {
     radius,
     color: '#f59e0b',
     fillColor: '#f59e0b',
-    fillOpacity: 0.12,
+    fillOpacity: 0.15,
     weight: 2,
     dashArray: '6 4'
   }).addTo(map)
@@ -173,7 +236,7 @@ export function showAnchorZone(lat, lon, radius) {
 
 export function hideAnchorZone() {
   if (anchorMarker) { anchorMarker.remove(); anchorMarker = null }
-  if (bearingCone) { bearingCone.remove(); bearingCone = null }
+  if (anchorCircle) { anchorCircle.remove(); anchorCircle = null }
 }
 
 // Distance ruler
@@ -186,26 +249,23 @@ export function startRuler(onResult) {
   rulerPoints = []
   clearRuler()
   map.getContainer().style.cursor = 'crosshair'
-  map.once('click', handleRulerClick)
 }
 
 function handleRulerClick(e) {
   rulerPoints.push(e.latlng)
   const dotIcon = L.divIcon({
-    html: `<div style="width:12px;height:12px;background:#f59e0b;border-radius:50%;border:2px solid white"></div>`,
-    iconSize: [12, 12], iconAnchor: [6, 6], className: ''
+    html: `<div style="width:14px;height:14px;background:#f59e0b;border-radius:50%;border:2px solid white;box-shadow:0 0 8px rgba(0,0,0,0.5)"></div>`,
+    iconSize: [14, 14], iconAnchor: [7, 7], className: ''
   })
   rulerMarkers.push(L.marker(e.latlng, { icon: dotIcon }).addTo(map))
 
-  if (rulerPoints.length === 1) {
-    map.once('click', handleRulerClick)
-  } else if (rulerPoints.length === 2) {
+  if (rulerPoints.length === 2) {
     const [a, b] = rulerPoints
     const distM = haversineDistance(a.lat, a.lng, b.lat, b.lng)
     const distNM = (distM / 1852).toFixed(2)
     const bearing = bearingTo(a.lat, a.lng, b.lat, b.lng)
     rulerLine = L.polyline([[a.lat, a.lng], [b.lat, b.lng]], {
-      color: '#f59e0b', weight: 2.5, dashArray: '8 4'
+      color: '#f59e0b', weight: 3, dashArray: '8 5'
     }).addTo(map)
     map.getContainer().style.cursor = ''
     rulerMode = false
@@ -219,8 +279,11 @@ export function clearRuler() {
   if (rulerLine) { rulerLine.remove(); rulerLine = null }
   rulerPoints = []
   map.getContainer().style.cursor = ''
-  map.off('click', handleRulerClick)
   rulerMode = false
+}
+
+export function isRulerActive() {
+  return rulerMode
 }
 
 export function setNightMode(active) {

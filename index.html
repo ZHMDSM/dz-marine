@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#0f172a">
-  <title>DZ Marine</title>
+  <title>DZ Marine - Navigation Côtière Algérienne</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚓</text></svg>">
 </head>
 <body>
@@ -15,10 +15,16 @@
   <!-- MAP -->
   <div id="map"></div>
 
-  <!-- HUD -->
+  <!-- BACKDROP OVERLAY FOR PANELS -->
+  <div id="panel-backdrop"></div>
+
+  <!-- HUD (HEADS-UP DISPLAY) -->
   <div id="hud">
     <div class="hud-top">
-      <div class="hud-brand" id="app-name">DZ Marine</div>
+      <div class="hud-brand-wrap">
+        <span class="hud-brand" id="app-name">DZ Marine</span>
+        <button class="hud-mode-pill" id="hud-mode-pill" title="Changer de mode">⚓ Bateau</button>
+      </div>
       <div class="hud-gps">
         <div class="gps-dot waiting" id="hud-gps-dot"></div>
         <span id="hud-gps-label">Attente GPS…</span>
@@ -27,41 +33,86 @@
     <div class="hud-metrics">
       <div class="hud-metric">
         <div class="hud-label" id="hud-speed-label">Vitesse</div>
-        <div class="hud-value" id="hud-speed">—</div>
+        <div class="hud-value" id="hud-speed">0.0 kts</div>
       </div>
       <div class="hud-metric">
         <div class="hud-label" id="hud-heading-label">Cap</div>
-        <div class="hud-value" id="hud-heading">—</div>
+        <div class="hud-value" id="hud-heading">000°</div>
       </div>
-      <div class="hud-metric" style="flex:2">
-        <div class="hud-label">Coordonnées</div>
+      <div class="hud-metric">
+        <div class="hud-label" id="hud-depth-label">Sonde / Prof.</div>
+        <div class="hud-value highlight" id="hud-depth">—</div>
+      </div>
+      <div class="hud-metric" style="flex:1.4">
+        <div class="hud-label" id="hud-coords-label">Coordonnées</div>
         <div class="hud-value small" id="hud-coords">—</div>
       </div>
     </div>
   </div>
 
-  <!-- FAB RIGHT (Center + Night) -->
+  <!-- FAB RIGHT BUTTONS -->
   <div id="fab-right">
-    <button class="fab-btn" id="btn-center" title="Centrer">🎯</button>
-    <button class="fab-btn" id="btn-night" title="Vision nocturne">🔴</button>
-    <button class="fab-btn" id="btn-ruler" title="Règle">📏</button>
-    <button class="fab-btn" id="btn-clear-ruler" title="Effacer règle">✖️</button>
+    <button class="fab-btn" id="btn-center" title="Centrer sur ma position">🎯</button>
+    <button class="fab-btn" id="btn-mode" title="Basculer Bateau / Bord">⚓</button>
+    <button class="fab-btn" id="btn-open-layers-fab" title="Couches marines">🗺️</button>
+    <button class="fab-btn" id="btn-night" title="Vision nocturne rouge">🔴</button>
+    <button class="fab-btn" id="btn-ruler" title="Mesure Cap & Distance">📏</button>
+    <button class="fab-btn hidden" id="btn-clear-ruler" title="Effacer la règle">✖️</button>
   </div>
 
-  <!-- BOTTOM TOOLBAR -->
+  <!-- MAP TAP INSPECTOR (Point details & quick spot creation) -->
+  <div id="map-inspector" class="hidden">
+    <div class="inspector-header">
+      <span class="inspector-title" id="insp-title">📌 Point sélectionné</span>
+      <button class="inspector-close" id="btn-close-inspector">✕</button>
+    </div>
+    <div class="inspector-body">
+      <div class="inspector-grid">
+        <div class="insp-item">
+          <span class="insp-label" id="insp-coords-label">Coordonnées</span>
+          <span class="insp-val" id="insp-coords">—</span>
+        </div>
+        <div class="insp-item">
+          <span class="insp-label" id="insp-depth-label">Sonde / Profondeur</span>
+          <span class="insp-val highlight" id="insp-depth">—</span>
+        </div>
+        <div class="insp-item">
+          <span class="insp-label" id="insp-dist-label">Distance du bateau</span>
+          <span class="insp-val" id="insp-dist">—</span>
+        </div>
+        <div class="insp-item">
+          <span class="insp-label" id="insp-bearing-label">Cap à suivre</span>
+          <span class="insp-val" id="insp-bearing">—</span>
+        </div>
+      </div>
+      <button class="btn-primary" id="btn-insp-add-spot" style="margin-top:10px">➕ Enregistrer ce Spot</button>
+    </div>
+  </div>
+
+  <!-- BOTTOM TOOLBAR (5 Navigation Tabs + Quick Save) -->
   <div id="toolbar">
     <button class="tb-btn" id="btn-open-spots">
-      <span>📍</span><span class="tb-label">Spots</span>
+      <span class="tb-icon">📍</span>
+      <span class="tb-label" id="tb-label-spots">Spots</span>
     </button>
     <button class="tb-btn" id="btn-open-anchor">
-      <span>⚓</span><span class="tb-label">Mouillage</span>
+      <span class="tb-icon">⚓</span>
+      <span class="tb-label" id="tb-label-anchor">Mouillage</span>
     </button>
-    <button class="tb-btn-quick-save" id="btn-quick-save" title="Sauvegarder position">📍</button>
+    <button class="tb-btn-quick-save" id="btn-quick-save" title="Sauvegarde rapide position">
+      <span>📍</span>
+    </button>
     <button class="tb-btn" id="btn-open-weather">
-      <span>🌊</span><span class="tb-label">Météo</span>
+      <span class="tb-icon">🌊</span>
+      <span class="tb-label" id="tb-label-weather">Météo</span>
+    </button>
+    <button class="tb-btn" id="btn-open-layers">
+      <span class="tb-icon">🗺️</span>
+      <span class="tb-label" id="tb-label-layers">Couches</span>
     </button>
     <button class="tb-btn" id="btn-open-settings">
-      <span>⚙️</span><span class="tb-label">Réglages</span>
+      <span class="tb-icon">⚙️</span>
+      <span class="tb-label" id="tb-label-settings">Réglages</span>
     </button>
   </div>
 
@@ -69,11 +120,11 @@
   <div class="bottom-panel" id="panel-spots">
     <div class="panel-header">
       <div class="panel-handle"></div>
-      <div class="panel-title">📍 Spots</div>
-      <button class="panel-close">✕</button>
+      <div class="panel-title" id="panel-title-spots">📍 Spots & Waypoints</div>
+      <button class="panel-close" id="close-panel-spots">✕</button>
     </div>
     <div class="spots-search-wrap">
-      <input class="search-input" id="spots-search" type="search" placeholder="Rechercher spots…">
+      <input class="search-input" id="spots-search" type="search" placeholder="Rechercher nom, roche, épave…">
     </div>
     <div id="spots-list"></div>
   </div>
@@ -82,16 +133,16 @@
   <div class="bottom-panel" id="panel-spot-edit">
     <div class="panel-header">
       <div class="panel-handle"></div>
-      <div class="panel-title">✏️ Modifier spot</div>
-      <button class="panel-close">✕</button>
+      <div class="panel-title" id="panel-title-edit-spot">✏️ Enregistrer / Modifier spot</div>
+      <button class="panel-close" id="close-panel-spot-edit">✕</button>
     </div>
     <div class="panel-body">
       <div class="form-group">
-        <label class="form-label">Nom</label>
-        <input class="form-input" id="edit-spot-name" type="text" placeholder="Nom du spot…">
+        <label class="form-label" id="form-label-name">Nom du spot</label>
+        <input class="form-input" id="edit-spot-name" type="text" placeholder="Ex: Tombant Tipaza, Roche Mérou…">
       </div>
       <div class="form-group">
-        <label class="form-label">Catégorie</label>
+        <label class="form-label" id="form-label-category">Catégorie</label>
         <select class="form-select" id="edit-spot-cat">
           <option value="fishing">🎣 Pêche</option>
           <option value="anchor">⚓ Mouillage</option>
@@ -103,16 +154,16 @@
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div class="form-group">
-          <label class="form-label">Profondeur (m)</label>
-          <input class="form-input" id="edit-spot-depth" type="number" step="0.5" min="0" placeholder="Ex: 25">
+          <label class="form-label" id="form-label-depth">Profondeur (m)</label>
+          <input class="form-input" id="edit-spot-depth" type="number" step="0.5" min="0" placeholder="Ex: 35">
         </div>
         <div class="form-group">
-          <label class="form-label">Visibilité (m)</label>
-          <input class="form-input" id="edit-spot-visibility" type="number" step="1" min="0" placeholder="Ex: 12">
+          <label class="form-label" id="form-label-visibility">Visibilité eau (m)</label>
+          <input class="form-input" id="edit-spot-visibility" type="number" step="1" min="0" placeholder="Ex: 15">
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Type de fond</label>
+        <label class="form-label" id="form-label-seabed">Type de fond</label>
         <select class="form-select" id="edit-spot-seabed">
           <option value="">— Non précisé —</option>
           <option value="posidonia">🌿 Herbier Posidonie</option>
@@ -123,19 +174,17 @@
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">Couleur</label>
-        <div class="color-row">
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <input type="color" id="edit-spot-color" value="#FF3B30" style="width:44px;height:44px;border-radius:10px;border:1px solid var(--border);cursor:pointer">
-            <span style="font-size:12px;color:var(--text-muted)">Choisir couleur</span>
-          </div>
+        <label class="form-label" id="form-label-color">Couleur du repère</label>
+        <div style="display:flex;gap:10px;align-items:center">
+          <input type="color" id="edit-spot-color" value="#0ea5e9" style="width:48px;height:40px;border-radius:10px;border:1px solid var(--border);cursor:pointer;background:transparent">
+          <span style="font-size:12px;color:var(--text-muted)" id="label-pick-color">Couleur personnalisée sur la carte</span>
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Notes / Historique</label>
-        <textarea class="form-textarea" id="edit-spot-notes" placeholder="Conditions, marée, leurre utilisé…"></textarea>
+        <label class="form-label" id="form-label-notes">Notes / Observations</label>
+        <textarea class="form-textarea" id="edit-spot-notes" placeholder="Courant, marée, appât, espèces observées…"></textarea>
       </div>
-      <div class="btn-row" style="margin-top:8px">
+      <div class="btn-row" style="margin-top:10px">
         <button class="btn-primary" id="btn-save-spot">💾 Enregistrer</button>
         <button class="btn-secondary" id="btn-cancel-spot">Annuler</button>
       </div>
@@ -146,27 +195,26 @@
   <div class="bottom-panel" id="panel-anchor">
     <div class="panel-header">
       <div class="panel-handle"></div>
-      <div class="panel-title">⚓ Alarme Mouillage</div>
-      <button class="panel-close">✕</button>
+      <div class="panel-title" id="panel-title-anchor">⚓ Alarme Mouillage</div>
+      <button class="panel-close" id="close-panel-anchor">✕</button>
     </div>
     <div class="panel-body">
-      <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px">
-        Posez l'ancre et définissez un rayon de sécurité. Une alarme se déclenchera si votre bateau dérive hors de la zone.
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px" id="anchor-desc">
+        Posez l'ancre et définissez un rayon de sécurité. Une alarme sonore se déclenchera si le bateau dérive hors de la zone.
       </p>
       <div id="anchor-active-ui" class="hidden">
         <div class="anchor-status" id="anchor-status">
-          <span id="anchor-status-text">✅ En sécurité</span>
+          <span id="anchor-status-text">✅ En sécurité dans la zone</span>
         </div>
-        <button class="btn-secondary btn-danger-full" id="btn-anchor-clear">🔕 Désactiver l'alarme</button>
+        <button class="btn-secondary btn-danger-full" id="btn-anchor-clear" style="margin-top:10px">🔕 Désactiver l'alarme</button>
       </div>
       <div id="btn-anchor-set-wrap">
         <div class="form-group">
-          <label class="form-label">Rayon de sécurité (mètres)</label>
-          <input class="form-input" id="anchor-radius" type="range" min="20" max="200" step="5" value="50"
-            oninput="document.getElementById('anchor-radius-val').textContent = this.value + 'm'">
-          <div style="text-align:center;font-weight:700;margin-top:4px;color:var(--accent)" id="anchor-radius-val">50m</div>
+          <label class="form-label" id="form-label-anchor-radius">Rayon de sécurité (mètres)</label>
+          <input class="form-input" id="anchor-radius" type="range" min="15" max="150" step="5" value="45">
+          <div style="text-align:center;font-weight:700;margin-top:6px;font-size:16px;color:var(--accent)" id="anchor-radius-val">45m</div>
         </div>
-        <button class="btn-primary" id="btn-anchor-set">⚓ Poser l'ancre ici</button>
+        <button class="btn-primary" id="btn-anchor-set" style="margin-top:10px">⚓ Poser l'ancre ici</button>
       </div>
     </div>
   </div>
@@ -175,17 +223,17 @@
   <div class="bottom-panel" id="panel-weather">
     <div class="panel-header">
       <div class="panel-handle"></div>
-      <div class="panel-title">🌊 Météo Marine</div>
-      <button class="panel-close">✕</button>
+      <div class="panel-title" id="panel-title-weather">🌊 Météo Marine (Open-Meteo)</div>
+      <button class="panel-close" id="close-panel-weather">✕</button>
     </div>
     <div class="panel-body">
-      <div id="weather-loading" class="hidden" style="text-align:center;padding:20px;color:var(--text-muted)">
-        ⏳ Chargement météo…
+      <div id="weather-loading" class="hidden" style="text-align:center;padding:24px;color:var(--text-muted)">
+        ⏳ Chargement des données maritimes…
       </div>
       <div id="weather-content">
-        <div class="empty-state">Appuyez sur "Actualiser" pour charger la météo marine.</div>
+        <div class="empty-state">Chargement météo de la côte algérienne…</div>
       </div>
-      <button class="btn-secondary" id="btn-fetch-weather" style="margin-top:12px">🔄 Actualiser météo</button>
+      <button class="btn-secondary" id="btn-fetch-weather" style="margin-top:14px;width:100%">🔄 Actualiser la météo</button>
     </div>
   </div>
 
@@ -193,26 +241,30 @@
   <div class="bottom-panel" id="panel-layers">
     <div class="panel-header">
       <div class="panel-handle"></div>
-      <div class="panel-title">🗺️ Couches cartographiques</div>
-      <button class="panel-close">✕</button>
+      <div class="panel-title" id="panel-title-layers">🗺️ Couches Cartographiques</div>
+      <button class="panel-close" id="close-panel-layers">✕</button>
     </div>
     <div class="panel-body">
       <div class="layers-grid">
         <button class="layer-btn active" id="layer-btn-osm">
           <div class="l-icon">🗺️</div>
-          <div class="l-name">OpenStreetMap</div>
+          <div class="l-name" id="layer-name-osm">OpenStreetMap</div>
         </button>
         <button class="layer-btn" id="layer-btn-satellite">
           <div class="l-icon">🛰️</div>
-          <div class="l-name">Satellite ESRI</div>
+          <div class="l-name" id="layer-name-satellite">Satellite ESRI</div>
         </button>
-        <button class="layer-btn" id="layer-btn-seamap">
+        <button class="layer-btn active" id="layer-btn-seamap">
           <div class="l-icon">🚢</div>
-          <div class="l-name">OpenSeaMap</div>
+          <div class="l-name" id="layer-name-seamap">OpenSeaMap</div>
         </button>
-        <button class="layer-btn" id="layer-btn-bathy">
+        <button class="layer-btn active" id="layer-btn-bathy">
           <div class="l-icon">🌊</div>
-          <div class="l-name">Bathymétrie</div>
+          <div class="l-name" id="layer-name-bathy">Bathymétrie EMODnet</div>
+        </button>
+        <button class="layer-btn active" id="layer-btn-depthContour">
+          <div class="l-icon">📏</div>
+          <div class="l-name" id="layer-name-depth">Sondes & Courbes (m)</div>
         </button>
       </div>
     </div>
@@ -222,21 +274,21 @@
   <div class="bottom-panel" id="panel-settings">
     <div class="panel-header">
       <div class="panel-handle"></div>
-      <div class="panel-title">⚙️ Paramètres</div>
-      <button class="panel-close">✕</button>
+      <div class="panel-title" id="panel-title-settings">⚙️ Paramètres</div>
+      <button class="panel-close" id="close-panel-settings">✕</button>
     </div>
     <div class="panel-body">
 
       <div class="settings-section">
-        <div class="settings-title">Mode de navigation</div>
+        <div class="settings-title" id="st-mode">Mode de navigation</div>
         <div style="display:flex;gap:8px">
-          <button class="lang-btn" id="btn-mode-boat" onclick="document.getElementById('btn-mode').click()">⚓ Bateau</button>
-          <button class="lang-btn" id="btn-mode-shore" onclick="document.getElementById('btn-mode').click()">🎣 Bord</button>
+          <button class="lang-btn active" id="btn-mode-boat">⚓ Bateau</button>
+          <button class="lang-btn" id="btn-mode-shore">🎣 Bord / Rocher</button>
         </div>
       </div>
 
       <div class="settings-section">
-        <div class="settings-title">Langue / Language / اللغة</div>
+        <div class="settings-title" id="st-lang">Langue / Language / اللغة</div>
         <div class="lang-row">
           <button class="lang-btn active" id="lang-fr">🇫🇷 Français</button>
           <button class="lang-btn" id="lang-ar">🇩🇿 عربي</button>
@@ -245,23 +297,23 @@
       </div>
 
       <div class="settings-section">
-        <div class="settings-title">Unités & affichage</div>
+        <div class="settings-title" id="st-units">Unités & affichage</div>
         <div class="setting-row">
-          <span class="setting-label">Vitesse</span>
+          <span class="setting-label" id="st-units-speed">Vitesse</span>
           <button class="toggle-btn" id="units-toggle">kts</button>
         </div>
         <div class="setting-row">
-          <span class="setting-label">Coordonnées</span>
+          <span class="setting-label" id="st-units-coords">Format coordonnées</span>
           <button class="toggle-btn" id="coord-toggle">DD</button>
         </div>
         <div class="setting-row">
-          <span class="setting-label">Vision nocturne</span>
-          <button class="toggle-btn" id="night-toggle-btn" onclick="document.getElementById('btn-night').click()">OFF</button>
+          <span class="setting-label" id="st-night">Vision nocturne (Rouge)</span>
+          <button class="toggle-btn" id="night-toggle-btn">OFF</button>
         </div>
       </div>
 
       <div class="settings-section">
-        <div class="settings-title">Import / Export spots</div>
+        <div class="settings-title" id="st-gpx">Sauvegarde & Partage spots</div>
         <div style="display:flex;gap:8px">
           <button class="btn-secondary" id="btn-export-gpx" style="flex:1">📤 Export GPX</button>
           <button class="btn-secondary" id="btn-import-gpx" style="flex:1">📥 Import GPX</button>
@@ -270,28 +322,28 @@
       </div>
 
       <div class="settings-section">
-        <div class="settings-title">📏 Distance & Cap</div>
-        <button class="btn-secondary" id="btn-ruler-settings" onclick="document.getElementById('btn-ruler').click()">📏 Activer règle</button>
+        <div class="settings-title" id="st-ruler">📏 Règle Cap & Distance</div>
+        <button class="btn-secondary" id="btn-ruler-settings">📏 Activer mesure sur carte</button>
       </div>
 
       <hr class="divider">
 
       <div class="settings-section">
-        <div class="settings-title" style="color:var(--danger)">🆘 Urgence SOS</div>
-        <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px">
-          Envoie un SMS avec vos coordonnées GPS exactes. Fonctionne en 2G même sans 4G.
+        <div class="settings-title" style="color:var(--danger)" id="st-sos">🆘 Urgence SOS</div>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px" id="st-sos-desc">
+          Envoie un SMS avec vos coordonnées GPS exactes. Fonctionne en 2G même sans couverture 4G.
         </p>
         <button class="sos-btn" id="btn-sos">🆘 ENVOYER SMS SOS</button>
       </div>
 
       <div style="text-align:center;margin-top:16px;font-size:11px;color:var(--text-muted)">
-        DZ Marine v1.0 — Navigation côtière algérienne<br>
+        DZ Marine v1.1 — Navigation côtière algérienne<br>
         Données: OpenSeaMap · EMODnet · ESRI · Open-Meteo
       </div>
     </div>
   </div>
 
-  <!-- TOAST -->
+  <!-- TOAST NOTIFICATION -->
   <div id="toast"></div>
 
   <script type="module" src="/src/main.js"></script>
