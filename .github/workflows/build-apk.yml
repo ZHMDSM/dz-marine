@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-apk:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Repository
@@ -16,10 +16,10 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
 
       - name: Install Web Dependencies
-        run: npm install --legacy-peer-deps
+        run: npm install
 
       - name: Build Web App (Vite)
         run: npm run build
@@ -27,21 +27,31 @@ jobs:
       - name: Setup Java JDK
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
+          distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Accept Android SDK Licenses
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-      - name: Initialize Capacitor Android
-        run: npx cap add android || true
+      - name: Add Capacitor Android Platform
+        run: |
+          npx cap add android || true
 
-      - name: Sync Capacitor
+      - name: Configure Android GPS Permissions
+        run: |
+          MANIFEST_FILE="android/app/src/main/AndroidManifest.xml"
+          if [ -f "$MANIFEST_FILE" ]; then
+            if ! grep -q "ACCESS_FINE_LOCATION" "$MANIFEST_FILE"; then
+              sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-feature android:name="android.hardware.location.gps" />' "$MANIFEST_FILE"
+            fi
+          fi
+
+      - name: Sync Capacitor Android
         run: npx cap sync android
 
       - name: Make gradlew executable
-        working-directory: android
-        run: chmod +x gradlew
+        run: chmod +x android/gradlew
 
       - name: Build Debug APK
         working-directory: android
@@ -51,5 +61,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: DZ-Marine-App-Debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: android/app/build/outputs/apk/debug/*.apk
           retention-days: 30
