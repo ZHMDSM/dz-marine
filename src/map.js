@@ -1,4 +1,4 @@
-// DZ Marine - Leaflet Map Engine
+// DZ Marine - Leaflet Map Engine strictly bounded to Algerian Coastal Waters
 import L from 'leaflet'
 import { haversineDistance, bearingTo } from './anchor.js'
 
@@ -13,11 +13,20 @@ let rulerMarkers = []
 let spotMarkers = new Map()
 let tapMarker = null
 
-// Tile layers
-let layers = {}
-let activeLayers = new Set(['osm', 'seamap', 'bathy', 'depthContour'])
+// Algerian Coastal Geographic Bounds (Territorial Waters: West to East)
+const ALGERIA_COASTAL_BOUNDS = [
+  [34.80, -2.60], // Southwest (Marsa Ben M'Hidi / Moroccan border)
+  [38.50, 8.85]   // Northeast (Offshore El Kala / Oum Teboul Tunisian border)
+]
 
-const TILE_DEFS = {
+// All real nautical & geographic layers
+let baseLayers = {}
+let overlayLayers = {}
+let activeOverlays = new Set(['bathyColor', 'contours', 'soundings', 'seamap'])
+let currentBase = 'osm'
+
+const LAYER_DEFS = {
+  // Base layers
   osm: {
     url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
     options: { attribution: '© OpenStreetMap', maxZoom: 19, subdomains: 'abc' }
@@ -26,43 +35,77 @@ const TILE_DEFS = {
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     options: { attribution: '© ESRI World Imagery', maxZoom: 19 }
   },
+
+  // Real Marine & Depth Overlays
+  bathyColor: {
+    url: 'https://tiles.emodnet-bathymetry.eu/2020/mean_multicolour/web_mercator/{z}/{x}/{y}.png',
+    options: {
+      attribution: '© EMODnet Bathymetry DTM',
+      maxNativeZoom: 11,
+      maxZoom: 19,
+      opacity: 0.75
+    }
+  },
+  contours: {
+    url: 'https://ows.emodnet-bathymetry.eu/wms',
+    isWms: true,
+    options: {
+      layers: 'emodnet:contours',
+      format: 'image/png',
+      transparent: true,
+      maxZoom: 19,
+      attribution: '© EMODnet Isobaths (m)'
+    }
+  },
+  soundings: {
+    url: 'https://services.arcgisonline.com/arcgis/rest/services/Ocean/World_Ocean_Reference/MapServer/tile/{z}/{y}/{x}',
+    options: {
+      attribution: '© Hydrographic Depth Soundings',
+      maxZoom: 16,
+      opacity: 0.90
+    }
+  },
   seamap: {
     url: 'https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png',
-    options: { attribution: '© OpenSeaMap', maxZoom: 18, opacity: 0.95 }
-  },
-  bathy: {
-    url: 'https://tiles.emodnet-bathymetry.eu/2020/baselayer/web_mercator/{z}/{x}/{y}.png',
-    options: { attribution: '© EMODnet Bathymetry', maxNativeZoom: 11, maxZoom: 19, opacity: 0.75 }
-  },
-  depthContour: {
-    url: 'https://services.arcgisonline.com/arcgis/rest/services/Ocean/World_Ocean_Reference/MapServer/tile/{z}/{y}/{x}',
-    options: { attribution: '© ESRI Depth Soundings', maxZoom: 16, opacity: 0.85 }
+    options: {
+      attribution: '© OpenSeaMap (Phares & Balises)',
+      maxZoom: 18,
+      opacity: 0.95
+    }
   }
 }
 
 export function initMap(containerId, onMapClickCallback) {
-  // Center on Algiers / Algerian central coastline
+  // Initialize map strictly constrained to Algerian coastal waters
   map = L.map(containerId, {
-    center: [36.75, 3.06],
+    center: [36.75, 3.06], // Central Algiers maritime basin
     zoom: 11,
+    minZoom: 7,            // Prevents zooming out of Algeria
+    maxZoom: 18,
+    maxBounds: ALGERIA_COASTAL_BOUNDS,
+    maxBoundsViscosity: 1.0, // Hard bounce back — cannot drag outside Algerian waters!
     zoomControl: false,
     attributionControl: false
   })
 
-  // Initialize all tile layers
-  layers.osm = L.tileLayer(TILE_DEFS.osm.url, TILE_DEFS.osm.options)
-  layers.satellite = L.tileLayer(TILE_DEFS.satellite.url, TILE_DEFS.satellite.options)
-  layers.seamap = L.tileLayer(TILE_DEFS.seamap.url, TILE_DEFS.seamap.options)
-  layers.bathy = L.tileLayer(TILE_DEFS.bathy.url, TILE_DEFS.bathy.options)
-  layers.depthContour = L.tileLayer(TILE_DEFS.depthContour.url, TILE_DEFS.depthContour.options)
+  // Initialize Base Layers
+  baseLayers.osm = L.tileLayer(LAYER_DEFS.osm.url, LAYER_DEFS.osm.options)
+  baseLayers.satellite = L.tileLayer(LAYER_DEFS.satellite.url, LAYER_DEFS.satellite.options)
+  baseLayers.osm.addTo(map)
 
-  // Add default active layers to map
-  layers.osm.addTo(map)
-  layers.seamap.addTo(map)
-  layers.bathy.addTo(map)
-  layers.depthContour.addTo(map)
+  // Initialize Marine Overlays
+  overlayLayers.bathyColor = L.tileLayer(LAYER_DEFS.bathyColor.url, LAYER_DEFS.bathyColor.options)
+  overlayLayers.contours = L.tileLayer.wms(LAYER_DEFS.contours.url, LAYER_DEFS.contours.options)
+  overlayLayers.soundings = L.tileLayer(LAYER_DEFS.soundings.url, LAYER_DEFS.soundings.options)
+  overlayLayers.seamap = L.tileLayer(LAYER_DEFS.seamap.url, LAYER_DEFS.seamap.options)
 
-  // Map click handler
+  // Add all active real depth overlays by default
+  overlayLayers.bathyColor.addTo(map)
+  overlayLayers.contours.addTo(map)
+  overlayLayers.soundings.addTo(map)
+  overlayLayers.seamap.addTo(map)
+
+  // Map Click Event
   map.on('click', (e) => {
     if (rulerMode) {
       handleRulerClick(e)
@@ -78,20 +121,37 @@ export function initMap(containerId, onMapClickCallback) {
 
 export function getMap() { return map }
 
-export function toggleLayer(name, show) {
-  if (!layers[name]) return
-  if (show) {
-    if (name === 'osm') { layers.satellite?.remove(); activeLayers.delete('satellite') }
-    if (name === 'satellite') { layers.osm?.remove(); activeLayers.delete('osm') }
-    layers[name].addTo(map)
-    activeLayers.add(name)
+// Switch Base Map (Street OSM vs High-Res Satellite)
+export function setBaseLayer(type) {
+  if (type === currentBase) return
+  if (type === 'satellite') {
+    baseLayers.osm.remove()
+    baseLayers.satellite.addTo(map)
+    currentBase = 'satellite'
   } else {
-    layers[name].remove()
-    activeLayers.delete(name)
+    baseLayers.satellite.remove()
+    baseLayers.osm.addTo(map)
+    currentBase = 'osm'
   }
 }
 
-export function isLayerActive(name) { return activeLayers.has(name) }
+export function getBaseLayer() { return currentBase }
+
+// Toggle specific overlay layer
+export function toggleOverlay(name, show) {
+  if (!overlayLayers[name]) return
+  if (show) {
+    overlayLayers[name].addTo(map)
+    activeOverlays.add(name)
+  } else {
+    overlayLayers[name].remove()
+    activeOverlays.delete(name)
+  }
+}
+
+export function isOverlayActive(name) {
+  return activeOverlays.has(name)
+}
 
 // Position marker with boat icon & directional cone
 export function updatePosition(lat, lon, cog, accuracy) {
@@ -147,9 +207,9 @@ export function setTapMarker(lat, lon) {
     tapMarker.setLatLng([lat, lon])
   } else {
     const tapIcon = L.divIcon({
-      html: `<div style="width:16px;height:16px;background:#0ea5e9;border:3px solid white;border-radius:50%;box-shadow:0 0 10px #0ea5e9"></div>`,
-      iconSize: [16, 16],
-      iconAnchor: [8, 8],
+      html: `<div style="width:18px;height:18px;background:#0ea5e9;border:3px solid white;border-radius:50%;box-shadow:0 0 12px #0ea5e9"></div>`,
+      iconSize: [18, 18],
+      iconAnchor: [9, 9],
       className: ''
     })
     tapMarker = L.marker([lat, lon], { icon: tapIcon, zIndexOffset: 900 }).addTo(map)

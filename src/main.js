@@ -1,7 +1,8 @@
 // DZ Marine - Main Application Entry Point
 import './style.css'
 import {
-  initMap, updatePosition, panToPosition, toggleLayer, isLayerActive,
+  initMap, updatePosition, panToPosition, setBaseLayer, getBaseLayer,
+  toggleOverlay, isOverlayActive,
   addSpotMarker, removeSpotMarker, clearAllSpotMarkers, setTapMarker, clearTapMarker,
   showAnchorZone, hideAnchorZone, startRuler, clearRuler, isRulerActive, setNightMode
 } from './map.js'
@@ -18,7 +19,7 @@ import {
   formatCoordDD, formatCoordDMS, msToKnots, msToKmh, haversineDistance, bearingTo
 } from './anchor.js'
 import { translations, setLanguage, t, getCurrentLang } from './i18n.js'
-import { getWaterDepth, formatDepth } from './depth.js'
+import { getWaterDepth, formatDepth, isWaterCoordinate } from './depth.js'
 
 // Application Global State
 let appState = {
@@ -191,6 +192,15 @@ async function onMapClick(latlng) {
 
   const lat = latlng.lat
   const lon = latlng.lng
+
+  // Strictly enforce Maritime / Water only! Land clicks are rejected.
+  if (!isWaterCoordinate(lat, lon)) {
+    showToast('⚠️ ' + t('landNotAllowed'), false, 3000)
+    clearTapMarker()
+    closeInspector()
+    return
+  }
+
   appState.tappedPoint = { lat, lon }
   appState.selectedSpotCoords = { lat, lon }
   
@@ -613,13 +623,6 @@ function applyTheme() {
   if (toggleBtn) toggleBtn.textContent = appState.nightMode ? 'ON' : 'OFF'
 }
 
-// ---- Layer Management ----
-function handleLayerToggle(name) {
-  const btn = document.getElementById(`layer-btn-${name}`)
-  const nowActive = !isLayerActive(name)
-  toggleLayer(name, nowActive)
-  if (btn) btn.classList.toggle('active', nowActive)
-}
 
 // ---- Operating Modes: Boat vs Shore vs Dive ----
 function setMode(mode) {
@@ -899,10 +902,30 @@ function setupEventListeners() {
     loadWeatherForTarget(appState.weatherTarget)
   })
 
-  // Map layer toggle buttons
-  const layerNames = ['osm', 'satellite', 'seamap', 'bathy', 'depthContour']
-  layerNames.forEach(name => {
-    document.getElementById(`layer-btn-${name}`)?.addEventListener('click', () => handleLayerToggle(name))
+  // Base map switcher (OSM vs Satellite)
+  document.getElementById('btn-base-osm')?.addEventListener('click', () => {
+    setBaseLayer('osm')
+    document.getElementById('btn-base-osm')?.classList.add('active')
+    document.getElementById('btn-base-satellite')?.classList.remove('active')
+    showToast('🗺️ ' + t('layerOSM'))
+  })
+  document.getElementById('btn-base-satellite')?.addEventListener('click', () => {
+    setBaseLayer('satellite')
+    document.getElementById('btn-base-satellite')?.classList.add('active')
+    document.getElementById('btn-base-osm')?.classList.remove('active')
+    showToast('🛰️ ' + t('layerSatellite'))
+  })
+
+  // Marine Overlays Toggle Switches
+  const overlaySwitches = ['bathyColor', 'contours', 'soundings', 'seamap']
+  overlaySwitches.forEach(name => {
+    const sw = document.getElementById(`switch-layer-${name}`)
+    if (sw) {
+      sw.checked = isOverlayActive(name)
+      sw.addEventListener('change', (e) => {
+        toggleOverlay(name, e.target.checked)
+      })
+    }
   })
 
   // Language buttons

@@ -76,6 +76,8 @@ export const translations = {
     weatherLocation: 'Prévisions pour :',
     myLocation: 'Ma position (Bateau)',
     selectedSpot: 'Point sélectionné',
+    landNotAllowed: 'Zone terrestre — Sélectionnez une zone maritime',
+    landNotAllowed: 'Land area — Please select sea / water only',
     // Layers
     layers: 'Couches',
     layerOSM: 'OpenStreetMap',
@@ -184,6 +186,7 @@ export const translations = {
     weatherLocation: 'توقعات لـ :',
     myLocation: 'موقعي الحالي (القارب)',
     selectedSpot: 'النقطة المحددة',
+    landNotAllowed: 'منطقة يابسة — الرجاء النقر في البحر فقط',
     layers: 'الطبقات',
     layerOSM: 'خريطة الشوارع (OSM)',
     layerSatellite: 'صور الأقمار الصناعية (ESRI)',

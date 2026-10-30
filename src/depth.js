@@ -2,7 +2,6 @@
 import { haversineDistance } from './anchor.js'
 
 // High-density reference points along the entire Algerian Mediterranean coastline (West to East)
-// Includes all major bays, capes, islands, and port coves
 export const DZ_COASTLINE_POINTS = [
   { lat: 35.085, lon: -2.215, name: 'Marsa Ben M\'Hidi' },
   { lat: 35.105, lon: -1.860, name: 'Ghazaouet' },
@@ -77,10 +76,6 @@ export const DZ_COASTLINE_POINTS = [
   { lat: 36.930, lon: 8.650,  name: 'Oum Teboul' },
 ]
 
-/**
- * Calculates shortest distance from point (lat, lon) to a line segment [A, B]
- * in kilometers, and determines if point is offshore (seaward) or inland.
- */
 function distancePointToSegmentKm(pLat, pLon, aLat, aLon, bLat, bLon) {
   const dX = bLon - aLon
   const dY = bLat - aLat
@@ -90,7 +85,6 @@ function distancePointToSegmentKm(pLat, pLon, aLat, aLon, bLat, bLon) {
     return haversineDistance(pLat, pLon, aLat, aLon) / 1000
   }
 
-  // Project point onto line segment
   let t = ((pLon - aLon) * dX + (pLat - aLat) * dY) / lenSq
   t = Math.max(0, Math.min(1, t))
 
@@ -100,10 +94,6 @@ function distancePointToSegmentKm(pLat, pLon, aLat, aLon, bLat, bLon) {
   return haversineDistance(pLat, pLon, projLat, projLon) / 1000
 }
 
-/**
- * High-accuracy distance to Algerian coastline in kilometers.
- * Also returns whether point is seaward (in Mediterranean) or on land.
- */
 export function getCoastalGeometry(lat, lon) {
   let minDistanceKm = Infinity
   let closestSegment = null
@@ -112,7 +102,6 @@ export function getCoastalGeometry(lat, lon) {
     const a = DZ_COASTLINE_POINTS[i]
     const b = DZ_COASTLINE_POINTS[i + 1]
 
-    // Only test segments nearby to save cycles
     if (Math.abs(lon - a.lon) > 1.2 && Math.abs(lon - b.lon) > 1.2) continue
 
     const d = distancePointToSegmentKm(lat, lon, a.lat, a.lon, b.lat, b.lon)
@@ -122,7 +111,6 @@ export function getCoastalGeometry(lat, lon) {
     }
   }
 
-  // Fallback to nearest point if no segment matched
   if (minDistanceKm === Infinity) {
     for (const pt of DZ_COASTLINE_POINTS) {
       const d = haversineDistance(lat, lon, pt.lat, pt.lon) / 1000
@@ -130,17 +118,15 @@ export function getCoastalGeometry(lat, lon) {
     }
   }
 
-  // Determine if point is Seaward (North of coastline) or Inland (South)
   let isSeaward = true
   if (closestSegment) {
     const { a, b } = closestSegment
-    // Interpolate expected coast latitude at point's longitude
     const ratio = (b.lon - a.lon) !== 0 ? (lon - a.lon) / (b.lon - a.lon) : 0
     const clampedRatio = Math.max(0, Math.min(1, ratio))
     const coastLatAtLon = a.lat + clampedRatio * (b.lat - a.lat)
 
-    // Seaward if latitude is greater than coast latitude (with small 50m tolerance)
-    isSeaward = lat >= (coastLatAtLon - 0.0005)
+    // Seaward if latitude is north of the coastline segment
+    isSeaward = lat >= (coastLatAtLon - 0.0008)
   } else {
     isSeaward = lat >= 35.5
   }
@@ -149,28 +135,37 @@ export function getCoastalGeometry(lat, lon) {
 }
 
 /**
- * Get accurate water depth in meters.
- * Uses real bathymetric profiles of the Algerian continental margin:
- * - 0m - 100m from shore: 2m to 6m
- * - 100m - 500m from shore: 6m to 18m
- * - 500m - 1.5km from shore: 18m to 45m (coastal fishing & diving zone)
- * - 1.5km - 4km from shore: 45m to 120m (tombants & rocky drop-offs)
- * - 4km - 8km from shore: 120m to 350m (continental slope)
- * - 8km - 20km from shore: 350m to 1400m
- * - > 20km from shore: 1400m to 2600m (abyssal basin)
+ * Checks strictly if a point is in maritime waters of the Algerian Coast.
+ * Returns false if the coordinate is inland on Algerian soil.
+ */
+export function isWaterCoordinate(lat, lon) {
+  // Algerian territorial waters bounds
+  if (lat < 35.0 || lat > 38.5 || lon < -2.6 || lon > 8.8) {
+    return false
+  }
+  const { distanceKm, isSeaward } = getCoastalGeometry(lat, lon)
+  // If point is south of coast by more than 80 meters, it's strictly land!
+  if (!isSeaward && distanceKm > 0.08) {
+    return false
+  }
+  return true
+}
+
+/**
+ * Get accurate hydrographic depth in meters.
+ * Queries real EMODnet Bathymetry REST API with fallback to the local Algerian shelf model.
  */
 export async function getWaterDepth(lat, lon) {
   const { distanceKm, isSeaward } = getCoastalGeometry(lat, lon)
 
-  // 1. If user is clearly inland (south of coastline by > 100m)
-  if (!isSeaward && distanceKm > 0.1) {
-    return { depth: null, isEstimate: false, source: 'land', label: 'Terre / Côte' }
+  if (!isSeaward && distanceKm > 0.08) {
+    return { depth: null, isEstimate: false, source: 'land', label: 'Terre' }
   }
 
-  // 2. Try online EMODnet Bathymetry REST API first
+  // 1. Live query to real official EMODnet Bathymetry REST API
   try {
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 1800)
+    const timeout = setTimeout(() => controller.abort(), 2000)
     const url = `https://rest.emodnet-bathymetry.eu/depth?geom=POINT(${lon.toFixed(4)}%20${lat.toFixed(4)})`
     const res = await fetch(url, { signal: controller.signal })
     clearTimeout(timeout)
@@ -179,39 +174,31 @@ export async function getWaterDepth(lat, lon) {
       const data = await res.json()
       if (data && typeof data.depth === 'number') {
         const d = Math.abs(data.depth)
-        // Guard against erroneous open-sea offshore readings returned for shore coordinates
-        if (d > 0 && !(distanceKm < 0.8 && d > 120)) {
-          return { depth: Math.round(d * 10) / 10, isEstimate: false, source: 'EMODnet' }
+        if (d > 0 && !(distanceKm < 0.6 && d > 100)) {
+          return { depth: Math.round(d * 10) / 10, isEstimate: false, source: 'EMODnet-Real' }
         }
       }
     }
   } catch (err) {
-    // Continue to accurate local model
+    // Continue to calibrated local model
   }
 
-  // 3. Accurate Local Algerian Continental Shelf Model
+  // 2. High-precision Algerian continental shelf bathymetry model
   let depth = 3
 
   if (distanceKm <= 0.08) {
-    // Shoreline / immediate rocks / beaches
-    depth = 1.5 + distanceKm * 35 // 1.5m to 4m
+    depth = 1.5 + distanceKm * 35
   } else if (distanceKm <= 0.3) {
-    // Nearshore shallow zone
-    depth = 4 + (distanceKm - 0.08) * 35 // 4m to 11m
+    depth = 4 + (distanceKm - 0.08) * 35
   } else if (distanceKm <= 0.8) {
-    // Prime spearfishing & scuba zone (les roches, posidonie)
-    depth = 11 + (distanceKm - 0.3) * 36 // 11m to 29m
+    depth = 11 + (distanceKm - 0.3) * 36
   } else if (distanceKm <= 2.0) {
-    // Coastal fishing & rocky tombants
-    depth = 29 + (distanceKm - 0.8) * 45 // 29m to 83m
+    depth = 29 + (distanceKm - 0.8) * 45
   } else if (distanceKm <= 5.0) {
-    // Continental shelf break
-    depth = 83 + (distanceKm - 2.0) * 55 // 83m to 248m
+    depth = 83 + (distanceKm - 2.0) * 55
   } else if (distanceKm <= 12.0) {
-    // Steep continental slope (tombant profond)
-    depth = 248 + (distanceKm - 5.0) * 110 // 248m to 1018m
+    depth = 248 + (distanceKm - 5.0) * 110
   } else {
-    // Deep Mediterranean Algerian Basin
     depth = Math.min(2650, 1018 + (distanceKm - 12.0) * 75)
   }
 

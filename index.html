@@ -269,31 +269,67 @@
   <div class="bottom-panel" id="panel-layers">
     <div class="panel-header">
       <div class="panel-handle"></div>
-      <div class="panel-title" id="panel-title-layers">🗺️ Couches Cartographiques</div>
+      <div class="panel-title" id="panel-title-layers">🗺️ Cartographie & Fonds Marins</div>
       <button class="panel-close" id="close-panel-layers">✕</button>
     </div>
     <div class="panel-body">
-      <div class="layers-grid">
-        <button class="layer-btn active" id="layer-btn-osm">
-          <div class="l-icon">🗺️</div>
-          <div class="l-name" id="layer-name-osm">OpenStreetMap</div>
-        </button>
-        <button class="layer-btn" id="layer-btn-satellite">
-          <div class="l-icon">🛰️</div>
-          <div class="l-name" id="layer-name-satellite">Satellite ESRI</div>
-        </button>
-        <button class="layer-btn active" id="layer-btn-seamap">
-          <div class="l-icon">🚢</div>
-          <div class="l-name" id="layer-name-seamap">OpenSeaMap (Phares/Balises)</div>
-        </button>
-        <button class="layer-btn active" id="layer-btn-bathy">
-          <div class="l-icon">🌊</div>
-          <div class="l-name" id="layer-name-bathy">Bathymétrie EMODnet</div>
-        </button>
-        <button class="layer-btn active" id="layer-btn-depthContour">
-          <div class="l-icon">📏</div>
-          <div class="l-name" id="layer-name-depth">Sondes & Courbes (m)</div>
-        </button>
+      <!-- Base map switcher -->
+      <div style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px" id="lbl-base-map">Fond de Carte</div>
+      <div class="base-switch-group">
+        <button class="lang-btn active" id="btn-base-osm">🗺️ Carte OSM</button>
+        <button class="lang-btn" id="btn-base-satellite">🛰️ Satellite ESRI</button>
+      </div>
+
+      <!-- Marine Depth & Navigation Toggle Switches -->
+      <div style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px" id="lbl-marine-layers">Couches Marines Hydrographiques</div>
+      <div class="layers-list">
+        <!-- 1. EMODnet Bathymetry Shading -->
+        <div class="layer-switch-row">
+          <div class="layer-switch-info">
+            <div class="layer-switch-title" id="l-title-bathy">🌊 Bathymétrie Relief Couleur</div>
+            <div class="layer-switch-desc" id="l-desc-bathy">Fonds marins en couleur haute définition EMODnet (~115m)</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="switch-layer-bathyColor" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <!-- 2. EMODnet Contours WMS -->
+        <div class="layer-switch-row">
+          <div class="layer-switch-info">
+            <div class="layer-switch-title" id="l-title-contours">📏 Courbes de Niveau (Isobaths)</div>
+            <div class="layer-switch-desc" id="l-desc-contours">Lignes officielles des profondeurs (2m, 5m, 10m, 20m, 50m, 100m…)</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="switch-layer-contours" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <!-- 3. Real Soundings Numbers -->
+        <div class="layer-switch-row">
+          <div class="layer-switch-info">
+            <div class="layer-switch-title" id="l-title-soundings">🔢 Points de Sonde Réels (m)</div>
+            <div class="layer-switch-desc" id="l-desc-soundings">Nombres de sonde réels écrits sur l'eau (Hydrographie ESRI)</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="switch-layer-soundings" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <!-- 4. OpenSeaMap Seamarks -->
+        <div class="layer-switch-row">
+          <div class="layer-switch-info">
+            <div class="layer-switch-title" id="l-title-seamap">🚢 Balises, Phares & Épaves</div>
+            <div class="layer-switch-desc" id="l-desc-seamap">Feux maritimes, bouées de chenal et dangers OpenSeaMap</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="switch-layer-seamap" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
       </div>
     </div>
   </div>
