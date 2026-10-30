@@ -12,8 +12,7 @@
     "@capacitor/android": "^6.0.0",
     "@capacitor/core": "^6.0.0",
     "@capacitor/geolocation": "^6.0.0",
-    "leaflet": "^1.9.4",
-    "lucide": "^0.263.1"
+    "leaflet": "^1.9.4"
   },
   "devDependencies": {
     "@capacitor/cli": "^6.0.0",
