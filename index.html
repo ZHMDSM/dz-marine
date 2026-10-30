@@ -43,6 +43,10 @@
         <div class="hud-label" id="hud-depth-label">Sonde / Prof.</div>
         <div class="hud-value highlight" id="hud-depth">—</div>
       </div>
+      <div class="hud-metric" id="hud-metric-vis">
+        <div class="hud-label" id="hud-vis-label">Visibilité eau</div>
+        <div class="hud-value highlight-cyan" id="hud-visibility">—</div>
+      </div>
       <div class="hud-metric" style="flex:1.4">
         <div class="hud-label" id="hud-coords-label">Coordonnées</div>
         <div class="hud-value small" id="hud-coords">—</div>
@@ -53,28 +57,35 @@
   <!-- FAB RIGHT BUTTONS -->
   <div id="fab-right">
     <button class="fab-btn" id="btn-center" title="Centrer sur ma position">🎯</button>
-    <button class="fab-btn" id="btn-mode" title="Basculer Bateau / Bord">⚓</button>
+    <button class="fab-btn" id="btn-mode" title="Basculer Bateau / Bord / Plongée">⚓</button>
     <button class="fab-btn" id="btn-open-layers-fab" title="Couches marines">🗺️</button>
     <button class="fab-btn" id="btn-night" title="Vision nocturne rouge">🔴</button>
     <button class="fab-btn" id="btn-ruler" title="Mesure Cap & Distance">📏</button>
     <button class="fab-btn hidden" id="btn-clear-ruler" title="Effacer la règle">✖️</button>
   </div>
 
-  <!-- MAP TAP INSPECTOR (Point details & quick spot creation) -->
+  <!-- MAP TAP INSPECTOR (Point details, depth, visibility, currents & quick actions) -->
   <div id="map-inspector" class="hidden">
     <div class="inspector-header">
-      <span class="inspector-title" id="insp-title">📌 Point sélectionné</span>
+      <div style="display:flex;align-items:center;gap:6px">
+        <span class="inspector-title" id="insp-title">📌 Point sélectionné</span>
+        <span class="inspector-badge" id="insp-badge-mode">Mer</span>
+      </div>
       <button class="inspector-close" id="btn-close-inspector">✕</button>
     </div>
     <div class="inspector-body">
       <div class="inspector-grid">
         <div class="insp-item">
-          <span class="insp-label" id="insp-coords-label">Coordonnées</span>
-          <span class="insp-val" id="insp-coords">—</span>
-        </div>
-        <div class="insp-item">
           <span class="insp-label" id="insp-depth-label">Sonde / Profondeur</span>
           <span class="insp-val highlight" id="insp-depth">—</span>
+        </div>
+        <div class="insp-item">
+          <span class="insp-label" id="insp-vis-label">Visibilité eau (est.)</span>
+          <span class="insp-val highlight-cyan" id="insp-visibility">—</span>
+        </div>
+        <div class="insp-item" style="grid-column: span 2">
+          <span class="insp-label" id="insp-current-label">Courant marin côtier</span>
+          <span class="insp-val" id="insp-current">—</span>
         </div>
         <div class="insp-item">
           <span class="insp-label" id="insp-dist-label">Distance du bateau</span>
@@ -84,8 +95,15 @@
           <span class="insp-label" id="insp-bearing-label">Cap à suivre</span>
           <span class="insp-val" id="insp-bearing">—</span>
         </div>
+        <div class="insp-item" style="grid-column: span 2" id="insp-weather-row">
+          <span class="insp-label" id="insp-weather-label">Météo sur ce spot</span>
+          <span class="insp-val small" id="insp-weather-mini">Chargement météo…</span>
+        </div>
       </div>
-      <button class="btn-primary" id="btn-insp-add-spot" style="margin-top:10px">➕ Enregistrer ce Spot</button>
+      <div class="inspector-actions">
+        <button class="btn-primary" id="btn-insp-add-spot">➕ Enregistrer ce Spot</button>
+        <button class="btn-secondary" id="btn-insp-weather">🌊 Météo complète 72h</button>
+      </div>
     </div>
   </div>
 
@@ -223,15 +241,25 @@
   <div class="bottom-panel" id="panel-weather">
     <div class="panel-header">
       <div class="panel-handle"></div>
-      <div class="panel-title" id="panel-title-weather">🌊 Météo Marine (Open-Meteo)</div>
+      <div class="panel-title" id="panel-title-weather">🌊 Météo Marine</div>
       <button class="panel-close" id="close-panel-weather">✕</button>
     </div>
     <div class="panel-body">
+      <!-- Location selection header -->
+      <div class="weather-location-bar">
+        <div style="font-size:12px;color:var(--text-muted)" id="weather-location-label">Prévisions pour :</div>
+        <div style="font-size:14px;font-weight:700;color:var(--accent);margin-top:2px" id="weather-location-name">Ma position (Bateau)</div>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button class="btn-secondary btn-sm active" id="btn-weather-target-gps">📍 Ma Position</button>
+          <button class="btn-secondary btn-sm" id="btn-weather-target-spot">📌 Spot sélectionné</button>
+        </div>
+      </div>
+
       <div id="weather-loading" class="hidden" style="text-align:center;padding:24px;color:var(--text-muted)">
         ⏳ Chargement des données maritimes…
       </div>
       <div id="weather-content">
-        <div class="empty-state">Chargement météo de la côte algérienne…</div>
+        <div class="empty-state">Chargement météo marine…</div>
       </div>
       <button class="btn-secondary" id="btn-fetch-weather" style="margin-top:14px;width:100%">🔄 Actualiser la météo</button>
     </div>
@@ -256,7 +284,7 @@
         </button>
         <button class="layer-btn active" id="layer-btn-seamap">
           <div class="l-icon">🚢</div>
-          <div class="l-name" id="layer-name-seamap">OpenSeaMap</div>
+          <div class="l-name" id="layer-name-seamap">OpenSeaMap (Phares/Balises)</div>
         </button>
         <button class="layer-btn active" id="layer-btn-bathy">
           <div class="l-icon">🌊</div>
@@ -281,9 +309,10 @@
 
       <div class="settings-section">
         <div class="settings-title" id="st-mode">Mode de navigation</div>
-        <div style="display:flex;gap:8px">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
           <button class="lang-btn active" id="btn-mode-boat">⚓ Bateau</button>
-          <button class="lang-btn" id="btn-mode-shore">🎣 Bord / Rocher</button>
+          <button class="lang-btn" id="btn-mode-shore">🎣 Bord</button>
+          <button class="lang-btn" id="btn-mode-dive">🤿 Plongée</button>
         </div>
       </div>
 
@@ -337,7 +366,7 @@
       </div>
 
       <div style="text-align:center;margin-top:16px;font-size:11px;color:var(--text-muted)">
-        DZ Marine v1.1 — Navigation côtière algérienne<br>
+        DZ Marine v1.2 — Navigation côtière algérienne<br>
         Données: OpenSeaMap · EMODnet · ESRI · Open-Meteo
       </div>
     </div>
