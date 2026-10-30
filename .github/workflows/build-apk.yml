@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-apk:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout Repository
@@ -19,7 +19,7 @@ jobs:
           node-version: 22
 
       - name: Install Web Dependencies
-        run: npm install
+        run: npm install --legacy-peer-deps
 
       - name: Build Web App (Vite)
         run: npm run build
@@ -33,10 +33,11 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Initialize & Sync Capacitor Android
-        run: |
-          npx cap add android || true
-          npx cap sync android
+      - name: Initialize Capacitor Android
+        run: npx cap add android || true
+
+      - name: Sync Capacitor
+        run: npx cap sync android
 
       - name: Make gradlew executable
         working-directory: android
