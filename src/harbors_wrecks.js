@@ -1,0 +1,376 @@
+// DZ Marine - Curated OpenSeaMap Algerian Harbors, Marinas & Historic Shipwrecks
+// Provides interactive nautical points of interest along the Algerian coastline
+
+export const ALGERIAN_HARBORS = [
+  {
+    id: 'port_ghazaouet',
+    name: 'Port de Ghazaouet',
+    lat: 35.105,
+    lon: -1.860,
+    type: 'harbor',
+    vhf: '16 / 12',
+    depthM: 9.5,
+    fuel: true,
+    shelter: 'Abri tous vents (jetée Nord)',
+    notes: 'Port de pêche et commerce. Accès facile de jour comme de nuit.'
+  },
+  {
+    id: 'port_beni_saf',
+    name: 'Port de Beni Saf',
+    lat: 35.305,
+    lon: -1.390,
+    type: 'harbor',
+    vhf: '16',
+    depthM: 7.0,
+    fuel: true,
+    shelter: 'Protégé des vents d\'Est et Sud',
+    notes: 'Important port de pêche sardinière.'
+  },
+  {
+    id: 'port_andalouses',
+    name: 'Marina Les Andalouses',
+    lat: 35.720,
+    lon: -0.850,
+    type: 'marina',
+    vhf: '16 / 09',
+    depthM: 3.5,
+    fuel: false,
+    shelter: 'Abri estival, attention houle d\'Ouest',
+    notes: 'Marina de plaisance et sports nautiques.'
+  },
+  {
+    id: 'port_oran',
+    name: 'Grand Port d\'Oran',
+    lat: 35.715,
+    lon: -0.630,
+    type: 'harbor',
+    vhf: '16 / 12',
+    depthM: 12.0,
+    fuel: true,
+    shelter: 'Excellente protection tous vents',
+    notes: 'Capitainerie active 24/24. Phare de l\'Aiguille au Nord.'
+  },
+  {
+    id: 'port_arzew',
+    name: 'Port d\'Arzew',
+    lat: 35.860,
+    lon: -0.310,
+    type: 'harbor',
+    vhf: '16 / 14',
+    depthM: 14.0,
+    fuel: true,
+    shelter: 'Port abrité, zone militaire méthanier sous surveillance',
+    notes: 'Respecter le chenal d\'accès obligatoire.'
+  },
+  {
+    id: 'port_mostaganem',
+    name: 'Port de Mostaganem',
+    lat: 35.930,
+    lon: 0.080,
+    type: 'harbor',
+    vhf: '16 / 12',
+    depthM: 8.5,
+    fuel: true,
+    shelter: 'Protégé par grande jetée Ouest',
+    notes: 'Pêche et commerce. Bassin de pêche à l\'Est.'
+  },
+  {
+    id: 'port_tenes',
+    name: 'Port de Tenes',
+    lat: 36.520,
+    lon: 1.330,
+    type: 'harbor',
+    vhf: '16',
+    depthM: 7.5,
+    fuel: true,
+    shelter: 'Bon abri derrière Cap Tenes',
+    notes: 'Port historique et halte de navigation essentielle.'
+  },
+  {
+    id: 'port_gouraya',
+    name: 'Port de Gouraya',
+    lat: 36.570,
+    lon: 1.900,
+    type: 'harbor',
+    vhf: '16',
+    depthM: 4.5,
+    fuel: false,
+    shelter: 'Abri moyen par fort coup de mer Nord',
+    notes: 'Petit port de pêche artisanal.'
+  },
+  {
+    id: 'port_cherchell',
+    name: 'Port de Cherchell',
+    lat: 36.608,
+    lon: 2.190,
+    type: 'harbor',
+    vhf: '16',
+    depthM: 5.0,
+    fuel: true,
+    shelter: 'Abri tous temps pour petites unités',
+    notes: 'Îlot du phare à l\'entrée. Chenal balisé.'
+  },
+  {
+    id: 'port_tipaza',
+    name: 'Port de Tipaza',
+    lat: 36.595,
+    lon: 2.440,
+    type: 'marina',
+    vhf: '16',
+    depthM: 3.5,
+    fuel: false,
+    shelter: 'Abri correct, dangereux par forte houle de Nord-Est',
+    notes: 'Cadre historique antique. Pêche et plaisance.'
+  },
+  {
+    id: 'port_bouharoun',
+    name: 'Port de Bouharoun',
+    lat: 36.635,
+    lon: 2.650,
+    type: 'harbor',
+    vhf: '16',
+    depthM: 5.5,
+    fuel: true,
+    shelter: 'Très bon abri houle d\'Ouest',
+    notes: 'Grand port de pêche réputé en Algérie.'
+  },
+  {
+    id: 'port_sidi_fredj',
+    name: 'Marina Sidi Fredj',
+    lat: 36.760,
+    lon: 2.850,
+    type: 'marina',
+    vhf: '16 / 09',
+    depthM: 4.0,
+    fuel: true,
+    shelter: 'Excellente marina fermée tous temps',
+    notes: 'Marina principale de plaisance d\'Alger. Eau, électricité, réparations.'
+  },
+  {
+    id: 'port_madrague',
+    name: 'Port d\'El Djemila (La Madrague)',
+    lat: 36.790,
+    lon: 2.920,
+    type: 'harbor',
+    vhf: '16',
+    depthM: 4.5,
+    fuel: false,
+    shelter: 'Bonne protection',
+    notes: 'Port de pêche côtière et restaurants.'
+  },
+  {
+    id: 'port_alger',
+    name: 'Port d\'Alger (Bassin Plaisance & Pêche)',
+    lat: 36.760,
+    lon: 3.070,
+    type: 'harbor',
+    vhf: '16 / 14',
+    depthM: 10.0,
+    fuel: true,
+    shelter: 'Abri total 360°',
+    notes: 'Capitainerie d\'Alger. Accès jour/nuit sous feux de guidage.'
+  },
+  {
+    id: 'port_tamentfoust',
+    name: 'Port de Tamentfoust (La Pérouse)',
+    lat: 36.805,
+    lon: 3.235,
+    type: 'harbor',
+    vhf: '16',
+    depthM: 4.2,
+    fuel: false,
+    shelter: 'Abri naturel contre vents d\'Ouest dans la baie',
+    notes: 'Mouillage forain traditionnel abrité.'
+  },
+  {
+    id: 'port_dellys',
+    name: 'Port de Dellys',
+    lat: 36.915,
+    lon: 3.910,
+    type: 'harbor',
+    vhf: '16',
+    depthM: 6.5,
+    fuel: true,
+    shelter: 'Bon abri derrière la presqu\'île de Dellys',
+    notes: 'Phare de Bengut au Nord.'
+  },
+  {
+    id: 'port_tigzirt',
+    name: 'Port de Tigzirt',
+    lat: 36.890,
+    lon: 4.120,
+    type: 'harbor',
+    vhf: '16',
+    depthM: 4.5,
+    fuel: false,
+    shelter: 'Abri pour petites unités',
+    notes: 'Îlot de Tigzirt en face.'
+  },
+  {
+    id: 'port_azzefoun',
+    name: 'Port d\'Azzefoun',
+    lat: 36.900,
+    lon: 4.420,
+    type: 'harbor',
+    vhf: '16',
+    depthM: 5.5,
+    fuel: true,
+    shelter: 'Protégé de la houle d\'Ouest',
+    notes: 'Port de pêche actif de Grande Kabylie.'
+  },
+  {
+    id: 'port_bejaia',
+    name: 'Port de Bejaia',
+    lat: 36.750,
+    lon: 5.080,
+    type: 'harbor',
+    vhf: '16 / 12',
+    depthM: 12.5,
+    fuel: true,
+    shelter: 'Excellent abri sous le Cap Carbon',
+    notes: 'Grand port de commerce et pêche.'
+  },
+  {
+    id: 'port_jijel',
+    name: 'Port de Jijel (Boudis)',
+    lat: 36.820,
+    lon: 5.770,
+    type: 'harbor',
+    vhf: '16 / 12',
+    depthM: 7.0,
+    fuel: true,
+    shelter: 'Très bon abri de la houle du large',
+    notes: 'Bassin de pêche moderne.'
+  },
+  {
+    id: 'port_collo',
+    name: 'Port de Collo',
+    lat: 37.010,
+    lon: 6.570,
+    type: 'harbor',
+    vhf: '16',
+    depthM: 6.0,
+    fuel: false,
+    shelter: 'Baie de Collo bien protégée',
+    notes: 'Cadre exceptionnel entouré de collines boisées.'
+  },
+  {
+    id: 'port_skikda',
+    name: 'Port de Stora (Skikda)',
+    lat: 36.900,
+    lon: 6.880,
+    type: 'harbor',
+    vhf: '16',
+    depthM: 6.5,
+    fuel: true,
+    shelter: 'Abri traditionnel de Stora',
+    notes: 'Ancien comptoir phénicien, port de pêche réputé.'
+  },
+  {
+    id: 'port_annaba',
+    name: 'Port d\'Annaba',
+    lat: 36.900,
+    lon: 7.770,
+    type: 'harbor',
+    vhf: '16 / 12',
+    depthM: 11.0,
+    fuel: true,
+    shelter: 'Grand port protégé sous le Cap de Garde',
+    notes: 'Capitainerie et services complets.'
+  },
+  {
+    id: 'port_el_kala',
+    name: 'Port d\'El Kala',
+    lat: 36.900,
+    lon: 8.440,
+    type: 'harbor',
+    vhf: '16',
+    depthM: 4.5,
+    fuel: true,
+    shelter: 'Goulot naturel abrité',
+    notes: 'Capitale algérienne du corail rouge. Entrée étroite.'
+  }
+]
+
+export const ALGERIAN_WRECKS = [
+  {
+    id: 'wreck_ville_marseille',
+    name: 'Épave du Ville de Marseille',
+    lat: 36.780,
+    lon: 3.125,
+    depthM: 28,
+    type: 'wreck',
+    year: 1944,
+    notes: 'Paquebot coulé pendant la 2ème guerre mondiale. Colonisé par mérous, sars et mostelles.'
+  },
+  {
+    id: 'wreck_espadon',
+    name: 'Épave de l\'Espadon',
+    lat: 36.785,
+    lon: 2.820,
+    depthM: 34,
+    type: 'wreck',
+    year: 1968,
+    notes: 'Chalutier reposant sur un fond de sable au large de Sidi Fredj. Très poissonneux.'
+  },
+  {
+    id: 'wreck_chenoua_antique',
+    name: 'Épave Antique du Chenoua',
+    lat: 36.620,
+    lon: 2.405,
+    depthM: 19,
+    type: 'wreck',
+    year: -150,
+    notes: 'Vestiges de cargaison d\'amphores romaines et canons sur fond rocheux.'
+  },
+  {
+    id: 'wreck_st_augustin',
+    name: 'Épave SS Saint-Augustin',
+    lat: 36.630,
+    lon: 2.210,
+    depthM: 38,
+    type: 'wreck',
+    year: 1917,
+    notes: 'Vapeur de commerce coulé au large de Cherchell. Refuge pour grands dentis et congres.'
+  },
+  {
+    id: 'wreck_hms_martin',
+    name: 'Épave Destroyer HMS Martin',
+    lat: 37.110,
+    lon: 6.450,
+    depthM: 52,
+    type: 'wreck',
+    year: 1942,
+    notes: 'Destroyer britannique torpillé au large du Cap Bougaroun.'
+  },
+  {
+    id: 'wreck_apsheron',
+    name: 'Épave Pétrolier Apsheron',
+    lat: 36.765,
+    lon: 5.140,
+    depthM: 42,
+    type: 'wreck',
+    year: 1943,
+    notes: 'Navire citerne coulé dans le Golfe de Bejaia. Immense structure sous-marine.'
+  },
+  {
+    id: 'wreck_proserpina',
+    name: 'Épave Cargo Proserpina',
+    lat: 36.935,
+    lon: 7.790,
+    depthM: 32,
+    type: 'wreck',
+    year: 1942,
+    notes: 'Cargo de 4800 tonnes coulé sous le Cap de Garde à Annaba.'
+  },
+  {
+    id: 'wreck_banfora',
+    name: 'Épave Le Banfora',
+    lat: 36.815,
+    lon: 2.960,
+    depthM: 24,
+    type: 'wreck',
+    year: 1952,
+    notes: 'Épave accessible au large de Pointe Pescade / Cap Caxine. Très fréquentée par les plongeurs.'
+  }
+]

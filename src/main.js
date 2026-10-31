@@ -6,6 +6,7 @@ import {
   addSpotMarker, removeSpotMarker, clearAllSpotMarkers, setTapMarker, clearTapMarker,
   showAnchorZone, hideAnchorZone, startRuler, clearRuler, isRulerActive, setNightMode
 } from './map.js'
+import { ALGERIAN_HARBORS, ALGERIAN_WRECKS } from './harbors_wrecks.js'
 import {
   initDB, saveSpot, getAllSpots, deleteSpot, exportGPX, importGPX,
   saveSetting, loadAllSettings
@@ -525,6 +526,7 @@ async function loadWeatherForTarget(target = 'gps') {
   const loading = document.getElementById('weather-loading')
   const content = document.getElementById('weather-content')
 
+  backToDaysView()
   if (loading) loading.classList.remove('hidden')
 
   try {
@@ -548,60 +550,218 @@ function renderWeatherPanel(data) {
   const el = document.getElementById('weather-content')
   if (!el || !c) return
 
+  // Reset to 7-day overview view
+  const daysView = document.getElementById('weather-days-view')
+  const hourlyView = document.getElementById('weather-hourly-view')
+  if (daysView) daysView.classList.remove('hidden')
+  if (hourlyView) hourlyView.classList.add('hidden')
+
   const isCache = data.isCache
-  const bft = c.windSpeed !== null ? beaufortScale(c.windSpeed) : '—'
   const windDir = c.windDir !== null ? degreesToCompass(c.windDir) : '—'
-  const waveLabel = waveConditionLabel(c.waveHeight)
   const vis = c.visibility || estimateWaterVisibility(c.waveHeight, c.wavePeriod, c.windSpeed)
   const visLabel = appState.lang === 'ar' ? vis.labelAr : appState.lang === 'fr' ? vis.labelFr : vis.labelEn
 
   const current = c.coastalCurrent || estimateCoastalCurrent(appState.gps.lat, appState.gps.lon, c.windSpeed, c.windDir)
   const currentLabel = appState.lang === 'ar' ? current.nameAr : appState.lang === 'fr' ? current.nameFr : current.nameEn
+  const condText = appState.lang === 'ar' ? c.weatherInfo.ar : (appState.lang === 'fr' ? c.weatherInfo.fr : c.weatherInfo.en)
 
-  el.innerHTML = `
+  // 1. Current Live Weather Hero Card
+  const currentCardHtml = `
     ${isCache ? `<div class="cache-badge">📶 ${t('weatherOffline')}</div>` : ''}
-    <div class="weather-grid">
-      <div class="weather-card">
-        <div class="w-icon">🌊</div>
-        <div class="w-label">${t('waveHeight')}</div>
-        <div class="w-value">${c.waveHeight !== null ? c.waveHeight.toFixed(1) + ' m' : '—'}</div>
-        <div class="w-sub">${waveLabel}</div>
+    <div class="weather-current-card">
+      <div class="wcc-header">
+        <span class="wcc-title">⚡ En Direct (${formatWeatherTime(c.time, appState.lang)})</span>
+        <span style="font-size:12.5px;font-weight:700;color:var(--text)">${c.weatherInfo.icon} ${condText}</span>
       </div>
-      <div class="weather-card">
-        <div class="w-icon">⏱️</div>
-        <div class="w-label">${t('wavePeriod')}</div>
-        <div class="w-value">${c.wavePeriod !== null ? c.wavePeriod.toFixed(0) + ' s' : '—'}</div>
-        <div class="w-sub">${c.waveDir !== null ? 'Dir: ' + degreesToCompass(c.waveDir) : ''}</div>
+      <div class="wcc-grid">
+        <div class="wcc-item">
+          <div class="wcc-lbl">${t('windSpeed')}</div>
+          <div class="wcc-val">💨 ${Math.round(c.windSpeed)} kts</div>
+          <div style="font-size:9.5px;color:var(--text-muted)">${windDir} • Raf. ${Math.round(c.windGusts)} kts</div>
+        </div>
+        <div class="wcc-item">
+          <div class="wcc-lbl">${t('waveHeight')}</div>
+          <div class="wcc-val">🌊 ${c.waveHeight.toFixed(1)} m</div>
+          <div style="font-size:9.5px;color:var(--text-muted)">Pér. ${Math.round(c.wavePeriod)}s</div>
+        </div>
+        <div class="wcc-item">
+          <div class="wcc-lbl">${t('seaTemp')} / Air</div>
+          <div class="wcc-val">🌡️ ${c.seaTemp.toFixed(1)}°C</div>
+          <div style="font-size:9.5px;color:var(--text-muted)">Air: ${Math.round(c.temp)}°C</div>
+        </div>
+        <div class="wcc-item">
+          <div class="wcc-lbl">${t('tides')}</div>
+          <div class="wcc-val" style="color:#38bdf8;font-size:12px">PM ${c.tides.highTide1.time}</div>
+          <div style="font-size:9.5px;color:var(--text-muted)">BM ${c.tides.lowTide1.time} (${c.tides.tidalRangeM}m)</div>
+        </div>
+        <div class="wcc-item">
+          <div class="wcc-lbl">${t('fishActivity')}</div>
+          <div class="wcc-val" style="color:#f59e0b;font-size:12px">${c.solunar.starString}</div>
+          <div style="font-size:9.5px;color:var(--warning)">Score: ${c.solunar.scorePercent}%</div>
+        </div>
+        <div class="wcc-item">
+          <div class="wcc-lbl">${t('visibility')}</div>
+          <div class="wcc-val" style="color:#2dd4bf;font-size:12px">${vis.meters} m</div>
+          <div style="font-size:9.5px;color:var(--text-muted)">Visi air: ${c.visibilityAtmKm}km</div>
+        </div>
       </div>
-      <div class="weather-card">
-        <div class="w-icon">💨</div>
-        <div class="w-label">${t('windSpeed')}</div>
-        <div class="w-value">${c.windSpeed !== null ? Math.round(c.windSpeed) + ' kts' : '—'}</div>
-        <div class="w-sub">Bft ${bft} • ${windDir}</div>
-      </div>
-      <div class="weather-card">
-        <div class="w-icon">🌡️</div>
-        <div class="w-label">${t('seaTemp')}</div>
-        <div class="w-value">${c.seaTemp !== null ? c.seaTemp.toFixed(1) + '°C' : '—'}</div>
-        <div class="w-sub">${c.windGusts !== null ? 'Rafales: ' + Math.round(c.windGusts) + ' kts' : ''}</div>
-      </div>
-      <div class="weather-card">
-        <div class="w-icon">👁️</div>
-        <div class="w-label">${t('visibility')}</div>
-        <div class="w-value" style="color:#2dd4bf">${vis.meters} m</div>
-        <div class="w-sub">${visLabel}</div>
-      </div>
-      <div class="weather-card">
-        <div class="w-icon">🧭</div>
-        <div class="w-label">${t('current')}</div>
-        <div class="w-value" style="font-size:14px">${current.speedKts} kts</div>
-        <div class="w-sub">${current.compass} (Est)</div>
-      </div>
-    </div>
-    <div style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:10px">
-      ${t('lastUpdate')}: ${formatWeatherTime(c.time, appState.lang)}
     </div>
   `
+
+  // 2. 7-Day Table
+  const days = data.days || []
+  const daysListHtml = days.map(d => {
+    const dayName = appState.lang === 'ar' ? d.dayNameAr : (appState.lang === 'fr' ? d.dayNameFr : d.dayNameEn)
+    const dayDesc = appState.lang === 'ar' ? d.weatherInfo.ar : (appState.lang === 'fr' ? d.weatherInfo.fr : d.weatherInfo.en)
+
+    return `
+      <div class="weather-day-card" onclick="window.dzApp.openHourlyDrillDown(${d.dayIndex})">
+        <div class="wdc-top">
+          <div class="wdc-date-wrap">
+            <span class="wdc-icon">${d.weatherInfo.icon}</span>
+            <div>
+              <div class="wdc-day-name">${dayName}</div>
+              <div style="font-size:11px;color:var(--text-muted)">${dayDesc}</div>
+            </div>
+          </div>
+          <div class="wdc-temp-pill">
+            <span style="color:#38bdf8">${d.tempMin}°</span> / <span style="color:#f59e0b">${d.tempMax}°C</span>
+          </div>
+        </div>
+
+        <div class="wdc-metrics-row">
+          <div class="wdc-metric">🌊 <b>${d.waveHeightMax}m</b> <span style="font-size:9.5px">(${d.wavePeriodMax}s)</span></div>
+          <div class="wdc-metric">💨 <b>${d.windSpeedMax} kts</b> <span style="font-size:9.5px">${d.windCompass}</span></div>
+          <div class="wdc-metric">🌊 <b>PM ${d.tides.highTide1.time}</b></div>
+          <div class="wdc-metric">🌙 <b>${d.moon.icon} ${d.moon.illumination}%</b></div>
+        </div>
+
+        <div class="wdc-footer">
+          <span class="wdc-solunar">🎣 ${d.solunar.starString} (${d.solunar.scorePercent}%) · 🐟 ${d.solunar.majorPeriod1}</span>
+          <span class="wdc-drill-cta">24h Heure par heure ➔</span>
+        </div>
+      </div>
+    `
+  }).join('')
+
+  el.innerHTML = `
+    ${currentCardHtml}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 8px">
+      <div style="font-size:13px;font-weight:800;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px">
+        📅 ${t('forecast7Days')}
+      </div>
+      <span style="font-size:11px;color:var(--text-muted)">Cliquez pour les 24h</span>
+    </div>
+    <div class="weather-days-list">
+      ${daysListHtml}
+    </div>
+  `
+}
+
+function openHourlyDrillDown(dayIndex) {
+  if (!appState.weather || !appState.weather.days) return
+  const day = appState.weather.days[dayIndex]
+  if (!day) return
+
+  const daysView = document.getElementById('weather-days-view')
+  const hourlyView = document.getElementById('weather-hourly-view')
+  const titleEl = document.getElementById('hourly-day-title')
+  const summaryEl = document.getElementById('hourly-day-summary')
+  const container = document.getElementById('hourly-cards-container')
+  const panel = document.getElementById('panel-weather')
+
+  if (daysView) daysView.classList.add('hidden')
+  if (hourlyView) hourlyView.classList.remove('hidden')
+  if (panel) panel.scrollTop = 0
+
+  const dayName = appState.lang === 'ar' ? day.dayNameAr : (appState.lang === 'fr' ? day.dayNameFr : day.dayNameEn)
+  if (titleEl) titleEl.textContent = `${dayName} (${day.date})`
+
+  if (summaryEl) {
+    const moonName = appState.lang === 'ar' ? day.moon.nameAr : (appState.lang === 'fr' ? day.moon.nameFr : day.moon.nameEn)
+
+    summaryEl.innerHTML = `
+      <div class="hds-box">
+        <div>🌅 <b>${t('sunrise')}:</b> ${day.sunrise} · 🌇 <b>${t('sunset')}:</b> ${day.sunset}</div>
+        <div>🌙 <b>${t('moonPhase')}:</b> ${day.moon.icon} ${moonName} (${day.moon.illumination}%)</div>
+        <div>⏰ <b>${t('moonrise')}:</b> ${day.moon.moonrise} · <b>${t('moonset')}:</b> ${day.moon.moonset}</div>
+      </div>
+      <div class="hds-box">
+        <div>🌊 <b>PM1:</b> ${day.tides.highTide1.time} (${day.tides.highTide1.heightM}m) · <b>BM1:</b> ${day.tides.lowTide1.time}</div>
+        <div>🌊 <b>PM2:</b> ${day.tides.highTide2.time} · <b>BM2:</b> ${day.tides.lowTide2.time} (${day.tides.coefficient})</div>
+        <div style="color:#f59e0b">🎣 <b>${t('fishActivity')}:</b> ${day.solunar.starString} (${day.solunar.scorePercent}%)</div>
+        <div style="font-size:10px;color:var(--text)">🐟 <b>Majeures:</b> ${day.solunar.majorPeriod1} & ${day.solunar.majorPeriod2}</div>
+      </div>
+    `
+  }
+
+  if (container) {
+    container.innerHTML = day.hourly.map(h => {
+      const feedingClass = h.isMajorFeeding ? 'feeding-major' : (h.isMinorFeeding ? 'feeding-minor' : '')
+      const feedingBadge = h.isMajorFeeding
+        ? `<span class="hc-badge feeding">🎣 ${t('majorPeriod')}</span>`
+        : (h.isMinorFeeding ? `<span class="hc-badge feeding" style="color:#38bdf8;border-color:#38bdf8">🐟 ${t('minorPeriod')}</span>` : '')
+
+      const capeLabel = appState.lang === 'ar' ? h.capeRisk.labelAr : (appState.lang === 'fr' ? h.capeRisk.labelFr : h.capeRisk.labelEn)
+      const isStorm = h.capeRisk.risk === 'high' || h.capeRisk.risk === 'extreme'
+      const stormBadge = isStorm
+        ? `<span class="hc-badge storm">⚡ ${capeLabel} (${h.cape} J/kg)</span>`
+        : `<span class="hc-badge stable">${h.capeRisk.icon} ${capeLabel} (${h.cape} J/kg)</span>`
+
+      const uvBadge = h.uvIndex > 0 ? `<span class="hc-badge">☀️ UV ${h.uvIndex}</span>` : ''
+      const rainBadge = h.rainMm > 0 ? `<span class="hc-badge" style="color:#38bdf8">🌧️ ${h.rainMm} mm</span>` : ''
+      const desc = appState.lang === 'ar' ? h.weatherInfo.ar : (appState.lang === 'fr' ? h.weatherInfo.fr : h.weatherInfo.en)
+
+      return `
+        <div class="hourly-card ${feedingClass}">
+          <div class="hc-top">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="hc-hour">${h.hourStr}</span>
+              <span>${h.weatherInfo.icon}</span>
+              <span style="font-size:12px;color:var(--text-muted)">${desc}</span>
+            </div>
+            <div class="hc-temp">
+              <span>🌡️ Air: <b>${h.temp}°C</b></span> • <span style="color:#38bdf8">Mer: <b>${h.seaTemp}°C</b></span>
+            </div>
+          </div>
+
+          <div class="hc-grid">
+            <div class="hc-item">
+              <span style="color:var(--text-muted)">💨 ${t('windSpeed')}:</span>
+              <b>${h.windSpeed} kts</b> ${h.windCompass}
+              <div style="font-size:9.5px;color:var(--warning)">${t('gusts')}: ${h.windGusts} kts</div>
+            </div>
+            <div class="hc-item">
+              <span style="color:var(--text-muted)">🌊 ${t('waveHeight')}:</span>
+              <b>${h.waveHeight} m</b> (${h.wavePeriod}s)
+              <div style="font-size:9.5px;color:#2dd4bf">Visi eau: ${h.waterVisM}m</div>
+            </div>
+            <div class="hc-item">
+              <span style="color:var(--text-muted)">📈 ${t('instantTide')}:</span>
+              <b>${h.tideHeightM} m</b>
+              <div style="font-size:9.5px;color:var(--text-muted)">Visi air: ${h.visibilityKm}km</div>
+            </div>
+          </div>
+
+          <div class="hc-badges">
+            ${feedingBadge}
+            ${stormBadge}
+            ${uvBadge}
+            ${rainBadge}
+          </div>
+        </div>
+      `
+    }).join('')
+  }
+}
+
+function backToDaysView() {
+  const daysView = document.getElementById('weather-days-view')
+  const hourlyView = document.getElementById('weather-hourly-view')
+  const panel = document.getElementById('panel-weather')
+  if (daysView) daysView.classList.remove('hidden')
+  if (hourlyView) hourlyView.classList.add('hidden')
+  if (panel) panel.scrollTop = 0
 }
 
 // ---- Night Mode ----
@@ -732,6 +892,25 @@ function applyLanguage(lang) {
   const pSettings = document.getElementById('panel-title-settings')
   if (pSettings) pSettings.textContent = `⚙️ ${t('settings')}`
 
+  // Layer titles
+  const lBathy = document.getElementById('l-title-bathy')
+  if (lBathy) lBathy.textContent = `🌊 ${t('layerBathy')}`
+
+  const lContours = document.getElementById('l-title-contours')
+  if (lContours) lContours.textContent = `📏 ${t('layerContours')}`
+
+  const lSoundings = document.getElementById('l-title-soundings')
+  if (lSoundings) lSoundings.textContent = `🔢 ${t('layerDepth')}`
+
+  const lSeamap = document.getElementById('l-title-seamap')
+  if (lSeamap) lSeamap.textContent = `🚢 ${t('layerSeaMap')}`
+
+  const lHarbors = document.getElementById('l-title-harbors')
+  if (lHarbors) lHarbors.textContent = `⚓ ${t('layerHarbors')}`
+
+  const lWrecks = document.getElementById('l-title-wrecks')
+  if (lWrecks) lWrecks.textContent = `🚢 ${t('layerWrecks')}`
+
   // Mode pill
   const pill = document.getElementById('hud-mode-pill')
   if (pill) {
@@ -743,6 +922,11 @@ function applyLanguage(lang) {
   document.getElementById('lang-fr')?.classList.toggle('active', lang === 'fr')
   document.getElementById('lang-ar')?.classList.toggle('active', lang === 'ar')
   document.getElementById('lang-en')?.classList.toggle('active', lang === 'en')
+
+  // If weather is already rendered, re-render to update text language
+  if (appState.weather) {
+    renderWeatherPanel(appState.weather)
+  }
 }
 
 // ---- Emergency SOS SMS ----
@@ -917,7 +1101,7 @@ function setupEventListeners() {
   })
 
   // Marine Overlays Toggle Switches
-  const overlaySwitches = ['bathyColor', 'contours', 'soundings', 'seamap']
+  const overlaySwitches = ['bathyColor', 'contours', 'soundings', 'seamap', 'harbors', 'wrecks']
   overlaySwitches.forEach(name => {
     const sw = document.getElementById(`switch-layer-${name}`)
     if (sw) {
@@ -927,6 +1111,9 @@ function setupEventListeners() {
       })
     }
   })
+
+  // Hourly weather drill-down back button
+  document.getElementById('btn-back-to-days')?.addEventListener('click', backToDaysView)
 
   // Language buttons
   document.getElementById('lang-fr')?.addEventListener('click', () => changeLanguage('fr'))
@@ -976,7 +1163,7 @@ function setupEventListeners() {
   document.getElementById('btn-sos')?.addEventListener('click', sendSOS)
 }
 
-// Global window API for inline list event handlers
+// Global window API for inline list event handlers & popups
 window.dzApp = {
   goToSpot(id) {
     const spot = appState.spots.find(s => s.id === id)
@@ -998,6 +1185,53 @@ window.dzApp = {
       renderSpotsPanel()
       showToast('🗑️ ' + t('delete'))
     }
+  },
+  openHourlyDrillDown(dayIndex) {
+    openHourlyDrillDown(dayIndex)
+  },
+  backToDaysView() {
+    backToDaysView()
+  },
+  weatherForCoords(lat, lon, label) {
+    appState.selectedSpotCoords = { lat, lon }
+    appState.weatherTarget = 'spot'
+    openPanel('panel-weather')
+    loadWeatherForTarget('spot')
+    showToast(`🌊 Météo: ${label}`)
+  },
+  async saveHarborAsSpot(harborId) {
+    const harbor = ALGERIAN_HARBORS.find(h => h.id === harborId)
+    if (!harbor) return
+    const newSpot = await saveSpot({
+      name: harbor.name,
+      latitude: harbor.lat,
+      longitude: harbor.lon,
+      depth_meters: harbor.depthM,
+      category: 'harbor',
+      color: '#10b981',
+      notes: `VHF: ${harbor.vhf} | ${harbor.shelter} | ${harbor.notes}`
+    })
+    appState.spots.push(newSpot)
+    addSpotMarker(newSpot, onSpotTap)
+    renderSpotsPanel()
+    showToast(`⚓ ${harbor.name} sauvegardé dans vos spots !`)
+  },
+  async saveWreckAsSpot(wreckId) {
+    const wreck = ALGERIAN_WRECKS.find(w => w.id === wreckId)
+    if (!wreck) return
+    const newSpot = await saveSpot({
+      name: wreck.name,
+      latitude: wreck.lat,
+      longitude: wreck.lon,
+      depth_meters: wreck.depthM,
+      category: 'wreck',
+      color: '#f59e0b',
+      notes: `Épave (${wreck.year > 0 ? wreck.year : Math.abs(wreck.year) + ' av. J.-C.'}) | ${wreck.notes}`
+    })
+    appState.spots.push(newSpot)
+    addSpotMarker(newSpot, onSpotTap)
+    renderSpotsPanel()
+    showToast(`🚢 ${wreck.name} sauvegardé dans vos spots !`)
   }
 }
 

@@ -1,6 +1,7 @@
 // DZ Marine - Leaflet Map Engine strictly bounded to Algerian Coastal Waters
 import L from 'leaflet'
 import { haversineDistance, bearingTo } from './anchor.js'
+import { ALGERIAN_HARBORS, ALGERIAN_WRECKS } from './harbors_wrecks.js'
 
 let map = null
 let positionMarker = null
@@ -22,7 +23,7 @@ const ALGERIA_COASTAL_BOUNDS = [
 // All real nautical & geographic layers
 let baseLayers = {}
 let overlayLayers = {}
-let activeOverlays = new Set(['bathyColor', 'contours', 'soundings', 'seamap'])
+let activeOverlays = new Set(['bathyColor', 'contours', 'soundings', 'seamap', 'harbors', 'wrecks'])
 let currentBase = 'osm'
 
 const LAYER_DEFS = {
@@ -99,11 +100,17 @@ export function initMap(containerId, onMapClickCallback) {
   overlayLayers.soundings = L.tileLayer(LAYER_DEFS.soundings.url, LAYER_DEFS.soundings.options)
   overlayLayers.seamap = L.tileLayer(LAYER_DEFS.seamap.url, LAYER_DEFS.seamap.options)
 
-  // Add all active real depth overlays by default
+  // Initialize Harbors & Wrecks Layer Groups
+  overlayLayers.harbors = createHarborsLayer()
+  overlayLayers.wrecks = createWrecksLayer()
+
+  // Add all active real depth & POI overlays by default
   overlayLayers.bathyColor.addTo(map)
   overlayLayers.contours.addTo(map)
   overlayLayers.soundings.addTo(map)
   overlayLayers.seamap.addTo(map)
+  overlayLayers.harbors.addTo(map)
+  overlayLayers.wrecks.addTo(map)
 
   // Map Click Event
   map.on('click', (e) => {
@@ -120,6 +127,98 @@ export function initMap(containerId, onMapClickCallback) {
 }
 
 export function getMap() { return map }
+
+/**
+ * Creates Leaflet LayerGroup of Algerian Harbors & Marinas with nautical popups
+ */
+function createHarborsLayer() {
+  const group = L.layerGroup()
+
+  ALGERIAN_HARBORS.forEach(h => {
+    const isMarina = h.type === 'marina'
+    const icon = L.divIcon({
+      html: `<div class="poi-harbor-marker ${isMarina ? 'marina' : 'port'}">
+        <span class="poi-icon">${isMarina ? '⛵' : '⚓'}</span>
+        <span class="poi-depth-tag">${h.depthM}m</span>
+      </div>`,
+      iconSize: [34, 34],
+      iconAnchor: [17, 17],
+      className: ''
+    })
+
+    const marker = L.marker([h.lat, h.lon], { icon, zIndexOffset: 500 })
+
+    const popupContent = `
+      <div class="nautical-popup">
+        <div class="np-header">
+          <span class="np-icon">${isMarina ? '⛵' : '⚓'}</span>
+          <div class="np-title">${h.name}</div>
+        </div>
+        <div class="np-body">
+          <div class="np-row"><b>Catégorie:</b> ${isMarina ? 'Marina de plaisance' : 'Port maritime'}</div>
+          <div class="np-row"><b>VHF:</b> Canal ${h.vhf}</div>
+          <div class="np-row"><b>Tirant d'eau:</b> <span class="highlight">${h.depthM} m</span></div>
+          <div class="np-row"><b>Carburant:</b> ${h.fuel ? '⛽ Disponible' : '❌ Non disponible'}</div>
+          <div class="np-row"><b>Abri:</b> ${h.shelter}</div>
+          <div class="np-notes">${h.notes}</div>
+        </div>
+        <div class="np-actions">
+          <button class="btn-sm btn-primary" onclick="window.dzApp.weatherForCoords(${h.lat}, ${h.lon}, '${h.name.replace(/'/g, "\\'")}')">🌊 Météo Port</button>
+          <button class="btn-sm btn-secondary" onclick="window.dzApp.saveHarborAsSpot('${h.id}')">📍 Sauvegarder Spot</button>
+        </div>
+      </div>
+    `
+    marker.bindPopup(popupContent, { maxWidth: 280, className: 'dz-popup' })
+    group.addLayer(marker)
+  })
+
+  return group
+}
+
+/**
+ * Creates Leaflet LayerGroup of Historic Algerian Shipwrecks with dive notes
+ */
+function createWrecksLayer() {
+  const group = L.layerGroup()
+
+  ALGERIAN_WRECKS.forEach(w => {
+    const icon = L.divIcon({
+      html: `<div class="poi-wreck-marker">
+        <span class="poi-icon">🚢</span>
+        <span class="poi-depth-tag">${w.depthM}m</span>
+      </div>`,
+      iconSize: [34, 34],
+      iconAnchor: [17, 17],
+      className: ''
+    })
+
+    const marker = L.marker([w.lat, w.lon], { icon, zIndexOffset: 450 })
+
+    const yearText = w.year > 0 ? `Année ${w.year}` : `${Math.abs(w.year)} av. J.-C.`
+
+    const popupContent = `
+      <div class="nautical-popup">
+        <div class="np-header">
+          <span class="np-icon">🚢</span>
+          <div class="np-title">${w.name}</div>
+        </div>
+        <div class="np-body">
+          <div class="np-row"><b>Profondeur:</b> <span class="highlight" style="color:#f59e0b">${w.depthM} mètres</span></div>
+          <div class="np-row"><b>Historique:</b> ${yearText}</div>
+          <div class="np-notes">${w.notes}</div>
+        </div>
+        <div class="np-actions">
+          <button class="btn-sm btn-primary" onclick="window.dzApp.weatherForCoords(${w.lat}, ${w.lon}, '${w.name.replace(/'/g, "\\'")}')">🌊 Météo Épave</button>
+          <button class="btn-sm btn-secondary" onclick="window.dzApp.saveWreckAsSpot('${w.id}')">🤿 Sauvegarder Spot Plongée</button>
+        </div>
+      </div>
+    `
+    marker.bindPopup(popupContent, { maxWidth: 280, className: 'dz-popup' })
+    group.addLayer(marker)
+  })
+
+  return group
+}
 
 // Switch Base Map (Street OSM vs High-Res Satellite)
 export function setBaseLayer(type) {

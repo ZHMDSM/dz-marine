@@ -258,9 +258,24 @@
       <div id="weather-loading" class="hidden" style="text-align:center;padding:24px;color:var(--text-muted)">
         ⏳ Chargement des données maritimes…
       </div>
-      <div id="weather-content">
-        <div class="empty-state">Chargement météo marine…</div>
+
+      <!-- WEATHER DAYS VIEW (7-day table overview) -->
+      <div id="weather-days-view">
+        <div id="weather-content">
+          <div class="empty-state">Chargement météo marine…</div>
+        </div>
       </div>
+
+      <!-- WEATHER HOURLY VIEW (Hourly drill-down for selected day) -->
+      <div id="weather-hourly-view" class="hidden">
+        <div class="hourly-nav-bar">
+          <button class="btn-secondary btn-sm" id="btn-back-to-days">← 7 Jours</button>
+          <div class="hourly-day-title" id="hourly-day-title">Samedi 31 Octobre</div>
+        </div>
+        <div id="hourly-day-summary"></div>
+        <div id="hourly-cards-container"></div>
+      </div>
+
       <button class="btn-secondary" id="btn-fetch-weather" style="margin-top:14px;width:100%">🔄 Actualiser la météo</button>
     </div>
   </div>
@@ -322,11 +337,35 @@
         <!-- 4. OpenSeaMap Seamarks -->
         <div class="layer-switch-row">
           <div class="layer-switch-info">
-            <div class="layer-switch-title" id="l-title-seamap">🚢 Balises, Phares & Épaves</div>
+            <div class="layer-switch-title" id="l-title-seamap">🚢 Balises, Phares & Écueils</div>
             <div class="layer-switch-desc" id="l-desc-seamap">Feux maritimes, bouées de chenal et dangers OpenSeaMap</div>
           </div>
           <label class="switch">
             <input type="checkbox" id="switch-layer-seamap" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <!-- 5. Algerian Ports & Marinas -->
+        <div class="layer-switch-row">
+          <div class="layer-switch-info">
+            <div class="layer-switch-title" id="l-title-harbors">⚓ Ports & Marinas d'Algérie</div>
+            <div class="layer-switch-desc" id="l-desc-harbors">25 ports côtiers (VHF, tirant d'eau, carburant & abris)</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="switch-layer-harbors" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <!-- 6. Historic Shipwrecks -->
+        <div class="layer-switch-row">
+          <div class="layer-switch-info">
+            <div class="layer-switch-title" id="l-title-wrecks">🚢 Épaves Célèbres Répertoriées</div>
+            <div class="layer-switch-desc" id="l-desc-wrecks">Épaves de navires historiques, profondeurs & faune sous-marine</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="switch-layer-wrecks" checked>
             <span class="slider"></span>
           </label>
         </div>
